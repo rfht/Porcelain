@@ -19,14 +19,15 @@
 #  - gemini://gemini.circumlunar.space/docs/specification.gmi
 #  - gemini://loomcom.com/thoughts.gmi
 #  - gemini://medusae.space/
+#  - gemini://playonbsd.com/index.gmi		-> fixed with sub sslcat_custom
+#  - gemini://gus.guru/				-> fixed with sub sslcat_custom
+#  - gemini://perso.pw/blog/articles/limit.gmi	-> fixed with sub sslcat_custom
 #
 #  NOT WORKING:
-#  - gemini://playonbsd.com/index.gmi		-> empty response (vger)
-#  - gemini://gmi.wikdict.com/			-> just returns 0
+#  - gemini://playonbsd.com							-> returns "31 /"
+#  - gemini://gemini.circumlunar.space/software/				-> 31 forwarding (not yet implemented)
+#  - gemini://gmi.wikdict.com/							-> just returns 0
 #  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof	-> returns "53 Proxy Requet Refused"
-#  - gemini://gus.guru/				-> empty response
-#  - gemini://perso.pw/blog/articles/limit.gmi	-> empty response
-#  - gemini://gemini.circumlunar.space/software/	-> 31 forwarding (not yet implemented)
 
 # TODO:
 # - look up pledge and unveil examples and best practices
@@ -41,14 +42,12 @@ package Porcelain::Main;
 use Encode qw(decode encode);
 use IO::Pager::Perl;					# 'q' key to quit not working; use Ctrl-C
 require Net::SSLeay;					# p5-Net-SSLeay
-Net::SSLeay->import(qw(sslcat));					# p5-Net-SSLeay
-$Net::SSLeay::trace = 4;
+Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
+#$Net::SSLeay::trace = 5;				# enable for tracing details of p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Term::ReadKey;					# for use with IO::Pager::Perl
 #use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
-
-binmode(STDOUT, ":utf8");
 
 sub gem_uri {
 	# TODO: error if not a valid URI
@@ -63,6 +62,52 @@ sub gem_host {
 	$out =~ s|/.*||;
 	return $out;
 }
+
+# taken from sub sslcat in:
+# /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
+sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
+	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
+	my ($ctx, $ssl, $got, $errs, $written);
+
+	($got, $errs) = Net::SSLeay::open_proxy_tcp_connection($dest_serv, $port);
+	return (wantarray ? (undef, $errs) : undef) unless $got;
+
+	### Do SSL negotiation stuff
+
+	$ctx = Net::SSLeay::new_x_ctx();
+	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_new') or !$ctx;
+	Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL);
+	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_set_options');
+	warn "Cert `$crt_path' given without key" if $crt_path && !$key_path;
+	Net::SSLeay::set_cert_and_key($ctx, $crt_path, $key_path) if $crt_path;
+	$ssl = Net::SSLeay::new($ctx);
+	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_new') or !$ssl;
+	Net::SSLeay::set_fd($ssl, fileno(Net::SSLeay::SSLCAT_S));
+	goto cleanup if $errs = Net::SSLeay::print_errs('set_fd');
+	$got = Net::SSLeay::connect($ssl);
+	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_connect');
+	my $server_cert = Net::SSLeay::get_peer_certificate($ssl);
+	Net::SSLeay::print_errs('get_peer_certificate');
+
+	### Connected. Exchange some data (doing repeated tries if necessary).
+
+	($written, $errs) = Net::SSLeay::ssl_write_all($ssl, $out_message);
+	goto cleanup unless $written;
+	sleep $Net::SSLeay::slowly if $Net::SSLeay::slowly;  # Closing too soon can abort broken servers
+	#($got, $errs) = Net::SSLeay::ssl_read_until($ssl, "EOF", 1024);
+	($got, $errs) = Net::SSLeay::ssl_read_all($ssl);
+	CORE::shutdown Net::SSLeay::SSLCAT_S, 1;  # Half close --> No more output, send EOF to server
+cleanup:
+	Net::SSLeay::free ($ssl);
+	$errs .= Net::SSLeay::print_errs('SSL_free');
+cleanup2:
+	Net::SSLeay::CTX_free ($ctx);
+	$errs .= Net::SSLeay::print_errs('CTX_free');
+	#close Net::SSLeay::SSLCAT_S;
+	return wantarray ? ($got, $errs, $server_cert) : $got;
+}
+
+Net::SSLeay::initialize();	# initialize ssl library once
 
 # TODO: tighten pledge later
 # stdio promise is always implied by OpenBSD::Pledge
@@ -113,8 +158,13 @@ my $status;
 my $meta;
 
 # TODO: avoid sslcat if viewing local file
+#
+# ALTERNATIVES TO sslcat:
+# 17:01 <solene>  printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
+#17:01 <solene> or printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
 #($reply, $err, $server_cert) = sslcat($domain, 1965, $url);
-($reply, $err, $server_cert)= sslcat($domain, 1965, encode('UTF-8', "$url\r\n", Encode::FB_CROAK));	# has to end with CRLF ('\r\n')
+($reply, $err, $server_cert)= sslcat_custom($domain, 1965, encode('UTF-8', "$url\r\n", Encode::FB_CROAK));	# has to end with CRLF ('\r\n')
+#$reply = `printf $url\r\n | openssl s_client -tls1_2 -ign_eof -connect $domain:1965`;
 # gemini://gemini.circumlunar.space/docs/specification.gmi
 # first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
 # <STATUS>: 2-digit numeric; only the first digit may be needed for the client
@@ -175,7 +225,7 @@ my $meta;
 #$reply = decode('UTF-8', $reply, Encode::FB_CROAK);
 #print "Error code: $err\n";
 #print "Server cert: $server_cert\n";
-#print $reply;
+print $reply;
 exit;
 
 $t->add_text( $reply );
