@@ -14,19 +14,41 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+# STATUS:
+#  WORKING DOMAINS:
+#  - gemini://gemini.circumlunar.space/docs/specification.gmi
+#  - gemini://loomcom.com/thoughts.gmi
+#  - gemini://medusae.space/
+#
+#  NOT WORKING:
+#  - gemini://playonbsd.com/index.gmi		-> empty response (vger)
+#  - gemini://gmi.wikdict.com/			-> just returns 0
+#  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof	-> returns "53 Proxy Requet Refused"
+#  - gemini://gus.guru/				-> empty response
+#  - gemini://perso.pw/blog/articles/limit.gmi	-> empty response
+#  - gemini://gemini.circumlunar.space/software/	-> 31 forwarding (not yet implemented)
+
 # TODO:
 # - look up pledge and unveil examples and best practices
+# - fix NOT WORKING sites above
+# - keep testing with gemini://gemini.conman.org/test/torture/
 
 use strict;
 use warnings;
+use utf8;		# really needed? Or Encode module rather?
 package Porcelain::Main;
 
+use Encode qw(decode encode);
 use IO::Pager::Perl;					# 'q' key to quit not working; use Ctrl-C
-use Net::SSLeay qw(sslcat);				# p5-Net-SSLeay
+require Net::SSLeay;					# p5-Net-SSLeay
+Net::SSLeay->import(qw(sslcat));					# p5-Net-SSLeay
+$Net::SSLeay::trace = 4;
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Term::ReadKey;					# for use with IO::Pager::Perl
 #use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
+
+binmode(STDOUT, ":utf8");
 
 sub gem_uri {
 	# TODO: error if not a valid URI
@@ -58,9 +80,6 @@ pledge(qw ( rpath inet dns tty unveil ) ) || die "Unable to pledge: $!";
 unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
-#unveil( "/usr/local/libdata/", "rx") || die "Unable to unveil: $!";
-#unveil( "/usr/libdata/", "rx") || die "Unable to unveil: $!";
-#unveil( "/usr/bin/host", "rx") || die "Unable to unveil: $!";
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
@@ -74,7 +93,7 @@ my $domain;
 
 # validate input - is this correct gemini URI format?
 
-$url = gem_uri("gemini://gemini.circumlunar.space/docs/specification.gmi");
+$url = gem_uri("$ARGV[0]");
 $domain = gem_host($url);
 
 print "ARGV0: $ARGV[0]\n";
@@ -94,7 +113,8 @@ my $status;
 my $meta;
 
 # TODO: avoid sslcat if viewing local file
-($reply, $err, $server_cert) = sslcat("gemini.circumlunar.space", 1965, "gemini://gemini.circumlunar.space/docs/specification.gmi");
+#($reply, $err, $server_cert) = sslcat($domain, 1965, $url);
+($reply, $err, $server_cert)= sslcat($domain, 1965, encode('UTF-8', "$url\r\n", Encode::FB_CROAK));	# has to end with CRLF ('\r\n')
 # gemini://gemini.circumlunar.space/docs/specification.gmi
 # first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
 # <STATUS>: 2-digit numeric; only the first digit may be needed for the client
@@ -151,6 +171,12 @@ my $meta;
 # - style bullet points
 # - style preformatted mode
 # - style quote lines
+
+#$reply = decode('UTF-8', $reply, Encode::FB_CROAK);
+#print "Error code: $err\n";
+#print "Server cert: $server_cert\n";
+#print $reply;
+exit;
 
 $t->add_text( $reply );
 
