@@ -1,0 +1,12 @@
+Porcelain
+=========
+
+Porcelain is a work-in-progress to build a browser for the gemini protocol.
+Its goals:
+
+* compatibility with all properly implemented servers/pages
+* enhanced security using OpenBSD's pledge(2) and unveil(2) via their Perl modules
+* text-based interface (at least at first)
+* minimal complexity of the codebase, maximal maintainability and readability to achieve the other goals
+
+License: ISC
