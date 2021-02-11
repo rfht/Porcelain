@@ -33,14 +33,15 @@
 # - look up pledge and unveil examples and best practices
 # - fix NOT WORKING sites above
 # - keep testing with gemini://gemini.conman.org/test/torture/
+# - implement a working pager (IO::Pager::Perl not working)
+# - implement forwarding
 
 use strict;
 use warnings;
-use utf8;		# really needed? Or Encode module rather?
 package Porcelain::Main;
 
-use Encode qw(decode encode);
-use IO::Pager::Perl;					# 'q' key to quit not working; use Ctrl-C
+#use IO::Pager::less;					# NOT WORKING
+#use IO::Pager::Perl;					# 'q' key to quit not working; use Ctrl-C; NOT WORKING
 require Net::SSLeay;					# p5-Net-SSLeay
 Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
 #$Net::SSLeay::trace = 5;				# enable for tracing details of p5-Net-SSLeay
@@ -48,6 +49,7 @@ use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Term::ReadKey;					# for use with IO::Pager::Perl
 #use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
+use utf8;
 
 sub gem_uri {
 	# TODO: error if not a valid URI
@@ -124,13 +126,14 @@ pledge(qw ( rpath inet dns tty unveil ) ) || die "Unable to pledge: $!";
 # needed paths for IO::Pager::Perl: /etc/termcap (r)
 unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
-unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
+unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
+# ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
 # setup
-my $t = IO::Pager::Perl->new();
+#my $t = IO::Pager::Perl->new();	# NOT WORKING
 
 # process user input
 my $url;
@@ -140,11 +143,6 @@ my $domain;
 
 $url = gem_uri("$ARGV[0]");
 $domain = gem_host($url);
-
-print "ARGV0: $ARGV[0]\n";
-print "URL: $url, Domain: $domain\n";
-print "Press 'Return' to continue...\n";
-my $input = <STDIN>;	# alternatively for any key with: use Term::ReadKey;
 
 # sslcat request
 my $reply;
@@ -163,7 +161,7 @@ my $meta;
 # 17:01 <solene>  printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
 #17:01 <solene> or printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
 #($reply, $err, $server_cert) = sslcat($domain, 1965, $url);
-($reply, $err, $server_cert)= sslcat_custom($domain, 1965, encode('UTF-8', "$url\r\n", Encode::FB_CROAK));	# has to end with CRLF ('\r\n')
+($reply, $err, $server_cert)= sslcat_custom($domain, 1965, "$url\r\n");	# has to end with CRLF ('\r\n')
 #$reply = `printf $url\r\n | openssl s_client -tls1_2 -ign_eof -connect $domain:1965`;
 # gemini://gemini.circumlunar.space/docs/specification.gmi
 # first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
@@ -204,6 +202,7 @@ my $meta;
 # Response Bodies
 # ===============
 #
+#
 # Raw text or binary content. Server closes connection after the final byte. No "end of response" signal.
 # Only after SUCCESS (2x) header.
 
@@ -222,13 +221,6 @@ my $meta;
 # - style preformatted mode
 # - style quote lines
 
-#$reply = decode('UTF-8', $reply, Encode::FB_CROAK);
 #print "Error code: $err\n";
 #print "Server cert: $server_cert\n";
 print $reply;
-exit;
-
-$t->add_text( $reply );
-
-# display page
-$t->more();		# 'q' key to quit not working; use Ctrl-C
