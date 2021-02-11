@@ -22,10 +22,10 @@
 #  - gemini://playonbsd.com/index.gmi		-> fixed with sub sslcat_custom
 #  - gemini://gus.guru/				-> fixed with sub sslcat_custom
 #  - gemini://perso.pw/blog/articles/limit.gmi	-> fixed with sub sslcat_custom
+#  - gemini://gemini.circumlunar.space/software/
 #
 #  NOT WORKING:
 #  - gemini://playonbsd.com							-> returns "31 /"
-#  - gemini://gemini.circumlunar.space/software/				-> 31 forwarding (not yet implemented)
 #  - gemini://gmi.wikdict.com/							-> just returns 0
 #  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof	-> returns "53 Proxy Requet Refused"
 
@@ -35,6 +35,7 @@
 # - keep testing with gemini://gemini.conman.org/test/torture/
 # - implement a working pager (IO::Pager::Perl not working)
 # - implement forwarding
+# - search "TODO" in comments
 
 use strict;
 use warnings;
@@ -115,54 +116,38 @@ Net::SSLeay::initialize();	# initialize ssl library once
 # stdio promise is always implied by OpenBSD::Pledge
 # needed promises:
 #	sslcat:			rpath inet dns
-# 	IO::Pager::Perl:	tty
+# 	IO::Pager::Perl:	tty	- NOT USING
 # 	URI (no support for 'gemini://':			prot_exec (for re engine)
-pledge(qw ( rpath inet dns tty unveil ) ) || die "Unable to pledge: $!";
+pledge(qw ( rpath inet dns unveil ) ) || die "Unable to pledge: $!";
 #pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
-#pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
 # needed paths for sslcat: /etc/resolv.conf (r)
-# needed paths for IO::Pager::Perl: /etc/termcap (r)
-unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
+# ### LEAVE OUT UNTIL USING ### unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
-# ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
-unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
+# ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
+# ### LEAVE OUT WITHOUT IO::Pager::Perl ### unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
-
-# setup
-#my $t = IO::Pager::Perl->new();	# NOT WORKING
 
 # process user input
 my $url;
 my $domain;
 
 # validate input - is this correct gemini URI format?
-
 $url = gem_uri("$ARGV[0]");
 $domain = gem_host($url);
 
 # sslcat request
-my $reply;
-my $err;
-my $server_cert;
-
-# response variables
-my $body;
-my $header;
-my $status;
-my $meta;
-
 # TODO: avoid sslcat if viewing local file
 #
 # ALTERNATIVES TO sslcat:
-# 17:01 <solene>  printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
-#17:01 <solene> or printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
-#($reply, $err, $server_cert) = sslcat($domain, 1965, $url);
-($reply, $err, $server_cert)= sslcat_custom($domain, 1965, "$url\r\n");	# has to end with CRLF ('\r\n')
-#$reply = `printf $url\r\n | openssl s_client -tls1_2 -ign_eof -connect $domain:1965`;
+# printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
+# printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
+(my $reply, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$url\r\n");	# has to end with CRLF ('\r\n')
+											# $err, $server_cert not usable IME
+
 # gemini://gemini.circumlunar.space/docs/specification.gmi
 # first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
 # <STATUS>: 2-digit numeric; only the first digit may be needed for the client
@@ -173,6 +158,7 @@ my $meta;
 #		* 11: SENSITIVE INPUT (e.g. password entry) - don't echo
 #	- 2x:	SUCCESS
 #		* <META>: MIME media type (apply to response body)
+#		* if <META> is empty string, MUST DEFAULT TO "text/gemini; charset=utf-8"
 #	- 3x:	REDIRECT
 #		* <META>: new URL
 #		* 30: REDIRECT - TEMPORARY
@@ -199,17 +185,45 @@ my $meta;
 # <META>: UTF-8 encoded, max 1024 bytes
 # The distinction between 4x and 5x is mostly for "well-behaved automated clients"
 #
-# Response Bodies
-# ===============
-#
-#
+# Response Body
+# =============
 # Raw text or binary content. Server closes connection after the final byte. No "end of response" signal.
 # Only after SUCCESS (2x) header.
 
 # process basic reply elements: header (status, meta), body (if applicable)
-# divide $reply into $header and $body
-# divide $header into $status and $meta
-# process language
+# TODO: process language, encoding
+
+my $header =		(split /\n/, $reply)[0];
+my $header_divider =	index $header, ' ';
+# TODO: does this need to tolerate multiple spaces or other whitespace in the header?
+my $full_status =	substr $header, 0, $header_divider;
+my $meta =		substr $header, $header_divider + 1;
+my $body =		substr $reply, length($header) + 1;
+
+# TODO: error if $full_status is not 2 digits
+
+my $status = substr $full_status, 0, 1;
+
+print "Status: $status\n";
+print "Meta: $meta\n";
+
+# Process $status
+if ($status == 1) {		# 1x: INPUT
+	print "INPUT\n";
+} elsif ($status == 2) {	# 2x: SUCCESS
+	print "SUCCESS\n";
+	print $body;
+} elsif ($status == 3) {	# 3x: REDIRECT
+	print "REDIRECT\n";
+} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
+	print "TEMPORARY FAILURE\n";
+} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
+	print "PERMANENT FAILURE\n";
+} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
+	print "CLIENT CERTIFICATE REQUIRED\n";
+} else {
+	die "Invalid status code in response";
+}
 
 # transform response body
 # - link lines into links
@@ -220,7 +234,3 @@ my $meta;
 # - style bullet points
 # - style preformatted mode
 # - style quote lines
-
-#print "Error code: $err\n";
-#print "Server cert: $server_cert\n";
-print $reply;
