@@ -36,28 +36,33 @@
 # - implement a working pager (IO::Pager::Perl not working)
 # - implement forwarding
 # - search "TODO" in comments
+# - Term::(Screen)Color appears to mess up terminal output newline -> CAN DO /usr/bin/reset to fix
+#	-> see stty(1). The -opost messes things up. Apparently solved with IO::Stty.
+# - import IO::Stty to ports
+# - check number of columns and warn if too few (< 80) ?
+# - intercept Ctrl-C and properly exit when it's pressed
+# - line break at work boundaries rather than in the middle of a word.
+# - deal with terminal line wrap. Make sure subsequent content isn't printed *over* wrapped lines.
+#	Example: gemini://hexdsl.co.uk/
 
 use strict;
 use warnings;
 use feature 'unicode_strings';
 package Porcelain::Main;
 
-#use IO::Pager::less;					# NOT WORKING
-#use IO::Pager::Perl;					# 'q' key to quit not working; use Ctrl-C; NOT WORKING
+use IO::Stty;
+my $stty_restore = IO::Stty::stty(\*STDIN, '-g');
 use List::Util qw(min max);
 require Net::SSLeay;					# p5-Net-SSLeay
 Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
-#$Net::SSLeay::trace = 5;				# enable for tracing details of p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
-#use Term::ReadKey;					# for use with IO::Pager::Perl
+#use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
+#use Term::Cap;						# for ->Tputs?? To reset terminal?
 use Term::ScreenColor;
 use Text::Format;					# p5-Text-Format
 #use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
-use utf8;
-
-# terminal: width in chars, height in chars, width in pixels, height in pixels
-#(my $wchar, my $hchar, my $wpix, my $hpix) = GetTerminalSize();	# from Term::ReadKey
+use utf8;						# TODO: really needed?
 
 my $scr = new Term::ScreenColor;
 $scr->colorizable(1);
@@ -91,8 +96,12 @@ sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	return ($first, $rest);
 }
 
-sub bold {	# string --> string(but bold)
+sub bold {	# string --> string (but bold)
 	return "\033[1m".$_[0]."\033[0m";
+}
+
+sub underscore {	# string --> string (but underscored)
+	return "\033[4m".$_[0]."\033[0m";
 }
 
 sub lines {	# multi-line text scalar --> $first_line / @lines
@@ -114,36 +123,54 @@ sub gmitxt {	# text/gemini (as array of lines!) => formatted text
 	my $t_list = 0;		# toggle unordered list - TODO
 	my $t_quote = 0;	# toggle quote - TODO
 	my $line;
+	my $link_url;
+	my $link_descr;
+	my $num_links = 0;
 	foreach (@$aref) {
 		# TODO: ignore formatting if $t_preform
-		if ($_ =~ /^###/) {			# Heading 3
-			$_ =~ s/^###[[:blank:]]+(.*)/H3: $1/;
-		} elsif ($_ =~ /^##/) {			# Heading 2
-			$_ =~ s/^##[[:blank:]]*//;
-			$_ = bold $_;
-			$_ = $scr->colored('white', $_);
-		} elsif ($_ =~ /^#/) {			# Heading 1
-			$line = $_ =~ s/^#[[:blank:]]*//r;
-			$line = bold $line;
-			$line = $scr->colored('white on blue', $line);
-			$line = $text->center($line);
-			$_ =~ s/.*/$line/;
-		} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
-			$_ =~ s/^=>[[:blank:]]+(.*)/L: $1/;
-		} elsif ($_ =~ /^```/) {		# Preformat toggle marker
+		if ($_ =~ /^```/) {		# Preformat toggle marker
 			if (not $t_preform) {
 				$t_preform = 1;
-				$_ =~ s/^```/PREFORM ON, ALT TEXT (IF ANY): /;
+				#$_ =~ s/^```/PREFORM ON, ALT TEXT (IF ANY): /;
+				$_ =~ s/.*//;			# don't display
 			} else {
 				$t_preform = 0;
-				$_ =~ s/^```.*$/PREFORM OFF/;
+				#$_ =~ s/^```.*$/PREFORM OFF/;
+				$_ =~ s/.*//;
 			}
-		} elsif ($_ =~ /^\* /) {		# Unordered List Item
-			$_ =~ s/^\* [[:blank:]]*(.*)/- $1/;
-		} elsif ($_ =~ /^>/) {			# Quote
-			$_ =~ s/^>[[:blank:]]*(.*)/> $1/;
-		} else {				# Text line
-			$_ =~ s/^[[:blank:]]*//;
+		} elsif (not $t_preform) {
+			if ($_ =~ /^###/) {			# Heading 3
+				$_ =~ s/^###[[:blank:]]*//;
+				$_ = bold $_;
+			} elsif ($_ =~ /^##/) {			# Heading 2
+				$_ =~ s/^##[[:blank:]]*//;
+				$_ = bold $_;
+				$_ = underscore $_;
+				$_ = $scr->colored('white', $_);
+			} elsif ($_ =~ /^#/) {			# Heading 1
+				$line = $_ =~ s/^#[[:blank:]]*//r;
+				$line = bold $line;
+				$line = $scr->colored('yellow', $line);
+				$line = $text->center($line);
+				$_ =~ s/.*/$line/;
+			} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
+				$num_links++;
+				$_ =~ s/^=>[[:blank:]]+//;
+				($link_url, $link_descr) = sep $_;
+				$_ = $link_descr;
+				$_ = underscore $_;
+				$_ = "[" . $num_links . "]\t" . $_;
+				# TODO: interface to link, e.g. number
+				#	Consider storing $num_links and $link_url in a hash
+			} elsif ($_ =~ /^\* /) {		# Unordered List Item
+				$_ =~ s/^\* [[:blank:]]*(.*)/- $1/;
+			} elsif ($_ =~ /^>/) {			# Quote
+				$_ =~ s/^>[[:blank:]]*(.*)/> $1/;
+			} else {				# Text line
+				$_ =~ s/^[[:blank:]]*//;
+			}
+		} else {					# display preformatted text
+			$_ = $scr->colored('black on cyan', $_);
 		}
 	}
 }
@@ -203,10 +230,10 @@ Net::SSLeay::initialize();	# initialize ssl library once
 # 	IO::Pager::Perl:	tty	- NOT USING
 # 	URI (no support for 'gemini://':			prot_exec (for re engine)
 #	Term::Screen		proc
-#pledge(qw ( rpath inet dns unveil ) ) || die "Unable to pledge: $!";
-pledge(qw ( rpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
+#	Term::ReadKey - ReadMode 0	tty	- NOT USING
+#	IO::Stty::stty		tty
+pledge(qw ( tty rpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
 ## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
-#pledge(qw ( rpath inet dns tty unix exec tmppath route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
 # needed paths for sslcat: /etc/resolv.conf (r)
@@ -215,9 +242,8 @@ unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r")
 unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
 unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
-# ### LEAVE OUT UNLESS WILL USE ###unveil( "/usr/bin/clear", "x") || die "Unable to unveil: $!";
+unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 # ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
-# ### LEAVE OUT WITHOUT IO::Pager::Perl ### unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
 # process user input
@@ -279,7 +305,7 @@ $domain = gem_host($url);
 # Raw text or binary content. Server closes connection after the final byte. No "end of response" signal.
 # Only after SUCCESS (2x) header.
 
-# process basic reply elements: header (status, meta), body (if applicable)
+# TODO: process basic reply elements: header (status, meta), body (if applicable)
 # TODO: process language, encoding
 
 my @response =	lines($raw_response);
@@ -290,31 +316,67 @@ my $status = substr $full_status, 0, 1;
 
 #$scr->puts("Status: $status\n");
 #$scr->puts("Meta: $meta\n");
-#my $testcols = $scr->cols;
-#$scr->puts("Cols: $testcols\n");
 
 # Process $status
 if ($status == 1) {		# 1x: INPUT
 	print "INPUT\n";
 } elsif ($status == 2) {	# 2x: SUCCESS
 	$scr->puts("SUCCESS\n");
-	gmitxt \@response;
+	gmitxt \@response;	# TODO: add second, empty array, and fill that one up (will likely have different line number)
 	$scr->noecho();
 	$scr->clrscr();
 	my $displayrows = $scr->rows - 2;
 	my $quit = 0;
-	my $viewport = 0;	# where in the page are we? (row)
+	my $viewfrom = 0;	# top line to be shown
+	my $viewto;
+	my $response_length = scalar(@response);
+	my $update_viewport = 1;
 	while (not $quit) {
-		for (0..$displayrows) {
-			$scr->at($_, 0);
-			$scr->puts($response[$_]);
+		$viewto = min($viewfrom + $displayrows, $response_length - 1);
+		if ($update_viewport == 1) {
+			IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
+			for ($viewfrom..$viewto) {
+				$scr->at($_ - $viewfrom, 0);
+				#$scr->puts($_.": ".$response[$_]);
+				$scr->puts($response[$_]);
+			}
 		}
+		$update_viewport = 0;
 
+		$scr->at($displayrows + 1, 0);
+		#$scr->puts("from: $viewfrom, to: $viewto");
+		# Keys strings of note: Page Up/Down (pgdn, pgup), Arrow Keys (ku,kd,kl,kr)
 		my $c = $scr->getch();
-		print "You pressed: $c\n";
+		#print "You pressed: $c\n";
 		if ($c eq 'q') {
 			$quit = 1;
+		} elsif ($c eq ' ' || $c eq 'pgdn') {
+			if ($viewto < $response_length - 1) {
+				$update_viewport = 1;
+			}
+			$viewfrom = min($viewfrom + $displayrows, $response_length - $displayrows - 1);
+		} elsif ($c eq 'b' || $c eq 'pgup') {
+			if ($viewfrom > 0) {
+				$update_viewport = 1;
+			}
+			$viewfrom = max($viewfrom - $displayrows, 0);
+		} elsif ($c eq 'kd') {
+			if ($viewto < $response_length - 1) {
+				$update_viewport = 1;
+				$viewfrom++;
+			}
+		} elsif ($c eq 'ku') {
+			if ($viewfrom > 0) {
+				$update_viewport = 1;
+				$viewfrom--;
+			}
 		}
+		if ($update_viewport == 1) {
+			$scr->clrscr();
+		}
+		$scr->at($displayrows + 1, 0);
+		$scr->clreol();
+		$scr->puts("viewfrom: $viewfrom, viewto: $viewto, response_length: $response_length, update_viewport: $update_viewport");
 	}
 	$scr->at($scr->rows, 0);
 } elsif ($status == 3) {	# 3x: REDIRECT
@@ -338,3 +400,7 @@ if ($status == 1) {		# 1x: INPUT
 # - style bullet points
 # - style preformatted mode
 # - style quote lines
+
+IO::Stty::stty(\*STDIN, $stty_restore);
+# TODO: clear screen on exit? ($scr->clrscr())
+#	Or just clear the last line at the bottom?
