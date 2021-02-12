@@ -109,16 +109,20 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 	return wantarray ? @lines : $lines[0];
 }
 
-sub gmitxt {	# text/gemini (as array of lines!) => formatted text
+sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => formatted text (to outarray), linkarray
 	# note: this will manipulate the passed array, rather than return a new one
-	# call with "gmitxt \@array"
+	# call with "gmirender \@array \@outarray \@linkarray"
 	# TODO: what to do with the link targets?
 	# TODO: process "alt text" of initial preformat marker (text that follows)
 	# Note: Any text following the leading "```" of a preformat toggle line which
 	#	toggles preformatted mode off MUST be ignored by clients.
 	# TODO: should alt txt after ``` include any whitespace between ``` and alnum string?
 	# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
-	my $aref = $_[0];
+	my $inarray = $_[0];
+	my $outarray = $_[1];
+	my $linkarray = $_[2];
+	undef @$outarray;	# empty outarray
+	undef @$linkarray;	# empty linkarray
 	my $t_preform = 0;	# toggle for preformatted text
 	my $t_list = 0;		# toggle unordered list - TODO
 	my $t_quote = 0;	# toggle quote - TODO
@@ -126,52 +130,56 @@ sub gmitxt {	# text/gemini (as array of lines!) => formatted text
 	my $link_url;
 	my $link_descr;
 	my $num_links = 0;
-	foreach (@$aref) {
+	my $skipline = 0;
+	foreach (@$inarray) {
 		# TODO: ignore formatting if $t_preform
 		if ($_ =~ /^```/) {		# Preformat toggle marker
 			if (not $t_preform) {
 				$t_preform = 1;
-				#$_ =~ s/^```/PREFORM ON, ALT TEXT (IF ANY): /;
-				$_ =~ s/.*//;			# don't display
+				# don't display
+				# TODO: handle alt text?
 			} else {
 				$t_preform = 0;
-				#$_ =~ s/^```.*$/PREFORM OFF/;
-				$_ =~ s/.*//;
 			}
+			$skipline = 1;
 		} elsif (not $t_preform) {
 			if ($_ =~ /^###/) {			# Heading 3
-				$_ =~ s/^###[[:blank:]]*//;
-				$_ = bold $_;
+				$line = $_ =~ s/^###[[:blank:]]*//r;
+				$line = bold $line;
 			} elsif ($_ =~ /^##/) {			# Heading 2
-				$_ =~ s/^##[[:blank:]]*//;
-				$_ = bold $_;
-				$_ = underscore $_;
-				$_ = $scr->colored('white', $_);
+				$line = $_ =~ s/^##[[:blank:]]*//r;
+				$line = bold $line;
+				$line = underscore $line;
+				$line = $scr->colored('white', $line);
 			} elsif ($_ =~ /^#/) {			# Heading 1
 				$line = $_ =~ s/^#[[:blank:]]*//r;
 				$line = bold $line;
 				$line = $scr->colored('yellow', $line);
 				$line = $text->center($line);
-				$_ =~ s/.*/$line/;
 			} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
 				$num_links++;
-				$_ =~ s/^=>[[:blank:]]+//;
-				($link_url, $link_descr) = sep $_;
-				$_ = $link_descr;
-				$_ = underscore $_;
-				$_ = "[" . $num_links . "]\t" . $_;
+				$line = $_ =~ s/^=>[[:blank:]]+//r;
+				($link_url, $link_descr) = sep $line;
+				push @$linkarray, $link_url;
+				$line = $link_descr;
+				$line = underscore $line;
+				$line = "[" . $num_links . "]\t" . $line;
 				# TODO: interface to link, e.g. number
 				#	Consider storing $num_links and $link_url in a hash
 			} elsif ($_ =~ /^\* /) {		# Unordered List Item
-				$_ =~ s/^\* [[:blank:]]*(.*)/- $1/;
+				$line = $_ =~ s/^\* [[:blank:]]*(.*)/- $1/r;
 			} elsif ($_ =~ /^>/) {			# Quote
-				$_ =~ s/^>[[:blank:]]*(.*)/> $1/;
+				$line = $_ =~ s/^>[[:blank:]]*(.*)/> $1/r;
 			} else {				# Text line
-				$_ =~ s/^[[:blank:]]*//;
+				$line = $_ =~ s/^[[:blank:]]*//r;
 			}
 		} else {					# display preformatted text
-			$_ = $scr->colored('black on cyan', $_);
+			$line = $scr->colored('black on cyan', $_);
 		}
+		if ($skipline == 0) {
+			push @$outarray, $line;
+		}
+		$skipline = 0;
 	}
 }
 
@@ -252,6 +260,8 @@ my $domain;
 
 # validate input - is this correct gemini URI format?
 $url = gem_uri("$ARGV[0]");
+
+# TODO: turn this into a sub
 $domain = gem_host($url);
 
 # sslcat request
@@ -299,11 +309,6 @@ $domain = gem_host($url);
 #		* 62: CERTIFICATE NOT VALID
 # <META>: UTF-8 encoded, max 1024 bytes
 # The distinction between 4x and 5x is mostly for "well-behaved automated clients"
-#
-# Response Body
-# =============
-# Raw text or binary content. Server closes connection after the final byte. No "end of response" signal.
-# Only after SUCCESS (2x) header.
 
 # TODO: process basic reply elements: header (status, meta), body (if applicable)
 # TODO: process language, encoding
@@ -311,8 +316,9 @@ $domain = gem_host($url);
 my @response =	lines($raw_response);
 my $header =	shift @response;
 (my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
-
 my $status = substr $full_status, 0, 1;
+my @render;	# render array
+my @links;	# array containing links in the page
 
 #$scr->puts("Status: $status\n");
 #$scr->puts("Meta: $meta\n");
@@ -322,46 +328,40 @@ if ($status == 1) {		# 1x: INPUT
 	print "INPUT\n";
 } elsif ($status == 2) {	# 2x: SUCCESS
 	$scr->puts("SUCCESS\n");
-	gmitxt \@response;	# TODO: add second, empty array, and fill that one up (will likely have different line number)
+	gmirender \@response, \@render, \@links;	# TODO: add second, empty array, and fill that one up (will likely have different line number)
 	$scr->noecho();
 	$scr->clrscr();
 	my $displayrows = $scr->rows - 2;
 	my $quit = 0;
 	my $viewfrom = 0;	# top line to be shown
 	my $viewto;
-	my $response_length = scalar(@response);
+	my $render_length = scalar(@render);
 	my $update_viewport = 1;
 	while (not $quit) {
-		$viewto = min($viewfrom + $displayrows, $response_length - 1);
+		$viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
+			# TODO: set 'opost' outside of the loop?
 			IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
-			for ($viewfrom..$viewto) {
-				$scr->at($_ - $viewfrom, 0);
-				#$scr->puts($_.": ".$response[$_]);
-				$scr->puts($response[$_]);
-			}
+			$scr->puts(join("\n", @render[$viewfrom..$viewto]));
 		}
 		$update_viewport = 0;
 
 		$scr->at($displayrows + 1, 0);
-		#$scr->puts("from: $viewfrom, to: $viewto");
-		# Keys strings of note: Page Up/Down (pgdn, pgup), Arrow Keys (ku,kd,kl,kr)
 		my $c = $scr->getch();
-		#print "You pressed: $c\n";
 		if ($c eq 'q') {
 			$quit = 1;
 		} elsif ($c eq ' ' || $c eq 'pgdn') {
-			if ($viewto < $response_length - 1) {
+			if ($viewto < $render_length - 1) {
 				$update_viewport = 1;
 			}
-			$viewfrom = min($viewfrom + $displayrows, $response_length - $displayrows - 1);
+			$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
 		} elsif ($c eq 'b' || $c eq 'pgup') {
 			if ($viewfrom > 0) {
 				$update_viewport = 1;
 			}
 			$viewfrom = max($viewfrom - $displayrows, 0);
 		} elsif ($c eq 'kd') {
-			if ($viewto < $response_length - 1) {
+			if ($viewto < $render_length - 1) {
 				$update_viewport = 1;
 				$viewfrom++;
 			}
@@ -370,13 +370,17 @@ if ($status == 1) {		# 1x: INPUT
 				$update_viewport = 1;
 				$viewfrom--;
 			}
-		}
+		} #elsif ( $c =~ /\d/ ) {
+
 		if ($update_viewport == 1) {
 			$scr->clrscr();
 		}
 		$scr->at($displayrows + 1, 0);
 		$scr->clreol();
-		$scr->puts("viewfrom: $viewfrom, viewto: $viewto, response_length: $response_length, update_viewport: $update_viewport");
+		#$scr->puts("viewfrom: $viewfrom, viewto: $viewto, render_length: $render_length, update_viewport: $update_viewport");
+		if ($c =~ /\d/ ) {
+			$scr->puts("Opening link: $links[$c - 1]");
+		}
 	}
 	$scr->at($scr->rows, 0);
 } elsif ($status == 3) {	# 3x: REDIRECT
