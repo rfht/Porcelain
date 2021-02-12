@@ -72,11 +72,31 @@ $scr->clrscr();
 my $text = Text::Format->new;
 $text->columns($scr->cols);
 
-sub gem_uri {
-	# TODO: error if not a valid URI
-	my $input = $_[0];
-	my $out = $input;
-	return $out;
+sub clean_exit {
+	IO::Stty::stty(\*STDIN, $stty_restore);
+	# TODO: clear screen on exit? ($scr->clrscr())
+	#	Or just clear the last line at the bottom?
+	if ($_[0]) {
+		print $_[0] . "\n";
+	}
+	exit;
+}
+
+sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
+	# TODO: just return protocol before '://'?
+	if ($_[0] =~ m{gemini://}) {
+		return 'gemini';
+	} elsif ($_[0] =~ m{https://}) {
+		return 'https';
+	} elsif ($_[0] =~ m{http://}) {
+		return 'http';
+	} elsif ($_[0] =~ m{gopher://}) {
+		return 'gopher';
+	} elsif ($_[0] =~ m{file://}) {
+		return 'file';
+	} else {
+		return '';
+	}
 }
 
 sub gem_host {
@@ -259,7 +279,10 @@ my $url;
 my $domain;
 
 # validate input - is this correct gemini URI format?
-$url = gem_uri("$ARGV[0]");
+$url = "$ARGV[0]";
+unless (uri_class($url) eq 'gemini') {
+	clean_exit "Protocol not supported.";
+}
 
 # TODO: turn this into a sub
 $domain = gem_host($url);
@@ -348,6 +371,7 @@ if ($status == 1) {		# 1x: INPUT
 
 		$scr->at($displayrows + 1, 0);
 		my $c = $scr->getch();
+
 		if ($c eq 'q') {
 			$quit = 1;
 		} elsif ($c eq ' ' || $c eq 'pgdn') {
@@ -370,7 +394,9 @@ if ($status == 1) {		# 1x: INPUT
 				$update_viewport = 1;
 				$viewfrom--;
 			}
-		} #elsif ( $c =~ /\d/ ) {
+		} elsif ( $c =~ /\d/ ) {
+			# TODO: open link with new URL request
+		}
 
 		if ($update_viewport == 1) {
 			$scr->clrscr();
@@ -378,9 +404,6 @@ if ($status == 1) {		# 1x: INPUT
 		$scr->at($displayrows + 1, 0);
 		$scr->clreol();
 		#$scr->puts("viewfrom: $viewfrom, viewto: $viewto, render_length: $render_length, update_viewport: $update_viewport");
-		if ($c =~ /\d/ ) {
-			$scr->puts("Opening link: $links[$c - 1]");
-		}
 	}
 	$scr->at($scr->rows, 0);
 } elsif ($status == 3) {	# 3x: REDIRECT
@@ -405,6 +428,4 @@ if ($status == 1) {		# 1x: INPUT
 # - style preformatted mode
 # - style quote lines
 
-IO::Stty::stty(\*STDIN, $stty_restore);
-# TODO: clear screen on exit? ($scr->clrscr())
-#	Or just clear the last line at the bottom?
+clean_exit;
