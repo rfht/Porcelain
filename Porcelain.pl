@@ -39,18 +39,33 @@
 
 use strict;
 use warnings;
+use feature 'unicode_strings';
 package Porcelain::Main;
 
 #use IO::Pager::less;					# NOT WORKING
 #use IO::Pager::Perl;					# 'q' key to quit not working; use Ctrl-C; NOT WORKING
+use List::Util qw(min max);
 require Net::SSLeay;					# p5-Net-SSLeay
 Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
 #$Net::SSLeay::trace = 5;				# enable for tracing details of p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
-use Term::ReadKey;					# for use with IO::Pager::Perl
+#use Term::ReadKey;					# for use with IO::Pager::Perl
+use Term::ScreenColor;
+use Text::Format;					# p5-Text-Format
 #use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
 use utf8;
+
+# terminal: width in chars, height in chars, width in pixels, height in pixels
+#(my $wchar, my $hchar, my $wpix, my $hpix) = GetTerminalSize();	# from Term::ReadKey
+
+my $scr = new Term::ScreenColor;
+$scr->colorizable(1);
+$scr->clrscr();
+
+# text formatter (Text::Format)
+my $text = Text::Format->new;
+$text->columns($scr->cols);
 
 sub gem_uri {
 	# TODO: error if not a valid URI
@@ -66,8 +81,76 @@ sub gem_host {
 	return $out;
 }
 
+sub sep {	# gmi string containing whitespace --> ($first, $rest)
+	# TODO: is leading whitespace allowed in the spec at all?
+	# Note this function applies to both text/gemini (links, headers, unordered list, quote)
+
+	my $first =	$_[0] =~ s/[[:blank:]].*$//r;
+	my $rest =	$_[0] =~ s/^[^[:blank:]]*[[:blank:]]*//r;
+
+	return ($first, $rest);
+}
+
+sub bold {	# string --> string(but bold)
+	return "\033[1m".$_[0]."\033[0m";
+}
+
+sub lines {	# multi-line text scalar --> $first_line / @lines
+	my @lines = (split /\n/, $_[0]);
+	return wantarray ? @lines : $lines[0];
+}
+
+sub gmitxt {	# text/gemini (as array of lines!) => formatted text
+	# note: this will manipulate the passed array, rather than return a new one
+	# call with "gmitxt \@array"
+	# TODO: what to do with the link targets?
+	# TODO: process "alt text" of initial preformat marker (text that follows)
+	# Note: Any text following the leading "```" of a preformat toggle line which
+	#	toggles preformatted mode off MUST be ignored by clients.
+	# TODO: should alt txt after ``` include any whitespace between ``` and alnum string?
+	# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
+	my $aref = $_[0];
+	my $t_preform = 0;	# toggle for preformatted text
+	my $t_list = 0;		# toggle unordered list - TODO
+	my $t_quote = 0;	# toggle quote - TODO
+	my $line;
+	foreach (@$aref) {
+		# TODO: ignore formatting if $t_preform
+		if ($_ =~ /^###/) {			# Heading 3
+			$_ =~ s/^###[[:blank:]]+(.*)/H3: $1/;
+		} elsif ($_ =~ /^##/) {			# Heading 2
+			$_ =~ s/^##[[:blank:]]*//;
+			$_ = bold $_;
+			$_ = $scr->colored('white', $_);
+		} elsif ($_ =~ /^#/) {			# Heading 1
+			$line = $_ =~ s/^#[[:blank:]]*//r;
+			$line = bold $line;
+			$line = $scr->colored('white on blue', $line);
+			$line = $text->center($line);
+			$_ =~ s/.*/$line/;
+		} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
+			$_ =~ s/^=>[[:blank:]]+(.*)/L: $1/;
+		} elsif ($_ =~ /^```/) {		# Preformat toggle marker
+			if (not $t_preform) {
+				$t_preform = 1;
+				$_ =~ s/^```/PREFORM ON, ALT TEXT (IF ANY): /;
+			} else {
+				$t_preform = 0;
+				$_ =~ s/^```.*$/PREFORM OFF/;
+			}
+		} elsif ($_ =~ /^\* /) {		# Unordered List Item
+			$_ =~ s/^\* [[:blank:]]*(.*)/- $1/;
+		} elsif ($_ =~ /^>/) {			# Quote
+			$_ =~ s/^>[[:blank:]]*(.*)/> $1/;
+		} else {				# Text line
+			$_ =~ s/^[[:blank:]]*//;
+		}
+	}
+}
+
 # taken from sub sslcat in:
 # /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
+# TODO: rewrite/simplify sslcat_custom
 sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
 	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
 	my ($ctx, $ssl, $got, $errs, $written);
@@ -110,6 +193,7 @@ cleanup2:
 	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
+# init
 Net::SSLeay::initialize();	# initialize ssl library once
 
 # TODO: tighten pledge later
@@ -118,8 +202,11 @@ Net::SSLeay::initialize();	# initialize ssl library once
 #	sslcat:			rpath inet dns
 # 	IO::Pager::Perl:	tty	- NOT USING
 # 	URI (no support for 'gemini://':			prot_exec (for re engine)
-pledge(qw ( rpath inet dns unveil ) ) || die "Unable to pledge: $!";
-#pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
+#	Term::Screen		proc
+#pledge(qw ( rpath inet dns unveil ) ) || die "Unable to pledge: $!";
+pledge(qw ( rpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
+## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
+#pledge(qw ( rpath inet dns tty unix exec tmppath route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
 # needed paths for sslcat: /etc/resolv.conf (r)
@@ -127,6 +214,8 @@ pledge(qw ( rpath inet dns unveil ) ) || die "Unable to pledge: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
+unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
+# ### LEAVE OUT UNLESS WILL USE ###unveil( "/usr/bin/clear", "x") || die "Unable to unveil: $!";
 # ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 # ### LEAVE OUT WITHOUT IO::Pager::Perl ### unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
@@ -145,7 +234,7 @@ $domain = gem_host($url);
 # ALTERNATIVES TO sslcat:
 # printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
 # printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
-(my $reply, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$url\r\n");	# has to end with CRLF ('\r\n')
+(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$url\r\n");	# has to end with CRLF ('\r\n')
 											# $err, $server_cert not usable IME
 
 # gemini://gemini.circumlunar.space/docs/specification.gmi
@@ -193,26 +282,41 @@ $domain = gem_host($url);
 # process basic reply elements: header (status, meta), body (if applicable)
 # TODO: process language, encoding
 
-my $header =		(split /\n/, $reply)[0];
-my $header_divider =	index $header, ' ';
-# TODO: does this need to tolerate multiple spaces or other whitespace in the header?
-my $full_status =	substr $header, 0, $header_divider;
-my $meta =		substr $header, $header_divider + 1;
-my $body =		substr $reply, length($header) + 1;
-
-# TODO: error if $full_status is not 2 digits
+my @response =	lines($raw_response);
+my $header =	shift @response;
+(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 
 my $status = substr $full_status, 0, 1;
 
-print "Status: $status\n";
-print "Meta: $meta\n";
+#$scr->puts("Status: $status\n");
+#$scr->puts("Meta: $meta\n");
+#my $testcols = $scr->cols;
+#$scr->puts("Cols: $testcols\n");
 
 # Process $status
 if ($status == 1) {		# 1x: INPUT
 	print "INPUT\n";
 } elsif ($status == 2) {	# 2x: SUCCESS
-	print "SUCCESS\n";
-	print $body;
+	$scr->puts("SUCCESS\n");
+	gmitxt \@response;
+	$scr->noecho();
+	$scr->clrscr();
+	my $displayrows = $scr->rows - 2;
+	my $quit = 0;
+	my $viewport = 0;	# where in the page are we? (row)
+	while (not $quit) {
+		for (0..$displayrows) {
+			$scr->at($_, 0);
+			$scr->puts($response[$_]);
+		}
+
+		my $c = $scr->getch();
+		print "You pressed: $c\n";
+		if ($c eq 'q') {
+			$quit = 1;
+		}
+	}
+	$scr->at($scr->rows, 0);
 } elsif ($status == 3) {	# 3x: REDIRECT
 	print "REDIRECT\n";
 } elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
