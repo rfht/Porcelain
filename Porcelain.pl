@@ -28,6 +28,7 @@
 #  - gemini://playonbsd.com							-> returns "31 /"
 #  - gemini://gmi.wikdict.com/							-> just returns 0
 #  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof	-> returns "53 Proxy Requet Refused"
+#  - gemini://gemini.circumlunar.space/software/				-> header1 not displayed
 
 # TODO:
 # - look up pledge and unveil examples and best practices
@@ -36,8 +37,6 @@
 # - implement a working pager (IO::Pager::Perl not working)
 # - implement forwarding
 # - search "TODO" in comments
-# - Term::(Screen)Color appears to mess up terminal output newline -> CAN DO /usr/bin/reset to fix
-#	-> see stty(1). The -opost messes things up. Apparently solved with IO::Stty.
 # - import IO::Stty to ports
 # - check number of columns and warn if too few (< 80) ?
 # - intercept Ctrl-C and properly exit when it's pressed
@@ -72,6 +71,8 @@ $scr->clrscr();
 my $text = Text::Format->new;
 $text->columns($scr->cols);
 
+my $url;
+
 sub clean_exit {
 	IO::Stty::stty(\*STDIN, $stty_restore);
 	# TODO: clear screen on exit? ($scr->clrscr())
@@ -84,19 +85,44 @@ sub clean_exit {
 
 sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	# TODO: just return protocol before '://'?
-	if ($_[0] =~ m{gemini://}) {
+	if ($_[0] =~ m{^gemini://}) {
 		return 'gemini';
-	} elsif ($_[0] =~ m{https://}) {
+	} elsif ($_[0] =~ m{^https://}) {
 		return 'https';
-	} elsif ($_[0] =~ m{http://}) {
+	} elsif ($_[0] =~ m{^http://}) {
 		return 'http';
-	} elsif ($_[0] =~ m{gopher://}) {
+	} elsif ($_[0] =~ m{^gopher://}) {
 		return 'gopher';
-	} elsif ($_[0] =~ m{file://}) {
+	} elsif ($_[0] =~ m{^file://}) {
 		return 'file';
+	} elsif ($_[0] =~ m{^/}) {
+		return 'relative';
+	} elsif ($_[0] =~ m{^[[:alnum:]]}) {
+		return 'relative';
 	} else {
 		return '';
 	}
+}
+
+sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
+			# no change if URL is already absolute
+	my $cururl = $_[0];
+	my $newurl = $_[1];
+
+	# TODO: check that $cururl is absolute (e.g. uri_class is 'gemini', 'https', 'http', 'gopher', 'file')
+
+	if (uri_class($newurl) eq 'relative') {
+		# get exactly one '/' separator
+		# remove trailing '/' from $cururl
+		$cururl =~ s/\/*$//;
+		if ($newurl =~ /^\//) {
+			$newurl = $cururl . $newurl;
+		} else {
+			$newurl = join('/', $cururl, $newurl);
+		}
+	}
+
+	return $newurl;
 }
 
 sub gem_host {
@@ -248,6 +274,184 @@ cleanup2:
 	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
+sub open_gmi {	# url
+	my $domain = gem_host($_[0]);
+
+	# sslcat request
+	# TODO: avoid sslcat if viewing local file
+	#
+	# ALTERNATIVES TO sslcat:
+	# printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
+	# printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
+	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n");	# has to end with CRLF ('\r\n')
+												# $err, $server_cert not usable IME
+
+	# gemini://gemini.circumlunar.space/docs/specification.gmi
+	# first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
+	# <STATUS>: 2-digit numeric; only the first digit may be needed for the client
+	#	- 1x:	INPUT
+	#		* <META> is a prompt to display to the user
+	#		* after user input, request the same resource again with the user input as the query component
+	#		* query component is separated from the path by '?'. Reserved characters including spaces must be "percent-encoded"
+	#		* 11: SENSITIVE INPUT (e.g. password entry) - don't echo
+	#	- 2x:	SUCCESS
+	#		* <META>: MIME media type (apply to response body)
+	#		* if <META> is empty string, MUST DEFAULT TO "text/gemini; charset=utf-8"
+	#	- 3x:	REDIRECT
+	#		* <META>: new URL
+	#		* 30: REDIRECT - TEMPORARY
+	#		* 31: REDIRECT - PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
+	#	- 4x:	TEMPORARY FAILURE
+	#		* <META>: additional information about the failure. Client should display this to the user.
+	#		* 40: TEMPORARY FAILURE
+	#		* 41: SERVER UNAVAILABLE (due to overload or maintenance)
+	#		* 42: CGI ERROR
+	#		* 43: PROXY ERROR
+	#		* 44: SLOW DOWN
+	#	- 5x:	PERMANENT FAILURE
+	#		* <META>: additional information, client to display this to the user
+	#		* 50: PERMANENT FAILURE
+	#		* 51: NOT FOUND
+	#		* 52: GONE
+	#		* 53: PROXY REQUEST REFUSED
+	#		* 59: BAD REQUEST
+	#	- 6x:	CLIENT CERTIFICATE REQUIRED
+	#		* <META>: _may_ provide additional information on certificat requirements or why a cert was rejected
+	#		* 60: CLIENT CERTIFICATE REQUIRED
+	#		* 61: CERTIFICATE NOT AUTHORIZED
+	#		* 62: CERTIFICATE NOT VALID
+	# <META>: UTF-8 encoded, max 1024 bytes
+	# The distinction between 4x and 5x is mostly for "well-behaved automated clients"
+
+	# TODO: process basic reply elements: header (status, meta), body (if applicable)
+	# TODO: process language, encoding
+
+	my @response =	lines($raw_response);
+	my $header =	shift @response;
+	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
+	my $status = substr $full_status, 0, 1;
+	my @render;	# render array
+	my @links;	# array containing links in the page
+
+	# Process $status
+	if ($status == 1) {		# 1x: INPUT
+		print "INPUT\n";
+	} elsif ($status == 2) {	# 2x: SUCCESS
+		$scr->puts("SUCCESS\n");
+		gmirender \@response, \@render, \@links;	# TODO: add second, empty array, and fill that one up (will likely have different line number)
+		$scr->noecho();
+		$scr->clrscr();
+		my $displayrows = $scr->rows - 2;
+		my $viewfrom = 0;	# top line to be shown
+		my $viewto;
+		my $render_length = scalar(@render);
+		my $update_viewport = 1;
+		while (1) {
+			$viewto = min($viewfrom + $displayrows, $render_length - 1);
+			if ($update_viewport == 1) {
+				# TODO: set 'opost' outside of the loop?
+				IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
+				$scr->puts(join("\n", @render[$viewfrom..$viewto]));
+			}
+			$update_viewport = 0;
+
+			$scr->at($displayrows + 1, 0);
+			my $c = $scr->getch();
+
+			if ($c eq 'q') {	# quit
+				undef $url;
+				return;
+			} elsif ($c eq ' ' || $c eq 'pgdn') {
+				if ($viewto < $render_length - 1) {
+					$update_viewport = 1;
+				}
+				$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
+			} elsif ($c eq 'b' || $c eq 'pgup') {
+				if ($viewfrom > 0) {
+					$update_viewport = 1;
+				}
+				$viewfrom = max($viewfrom - $displayrows, 0);
+			} elsif ($c eq 'kd') {
+				if ($viewto < $render_length - 1) {
+					$update_viewport = 1;
+					$viewfrom++;
+				}
+			} elsif ($c eq 'ku') {
+				if ($viewfrom > 0) {
+					$update_viewport = 1;
+					$viewfrom--;
+				}
+			} elsif ( $c =~ /\d/ ) {
+				# check that $c is < scalar(@links)
+				unless ($c < scalar(@links)) {
+					clean_exit "link number outside of range of current page";
+				}
+				# open link with new URL request
+				$scr->put("url: $url, ");
+				$url = expand_url($url, $links[$c - 1]);
+				$scr->puts("link: " . $links[$c - 1] . ", next url: " . $url . "\n");
+				clean_exit;
+				return;
+			}
+
+			if ($update_viewport == 1) {
+			$scr->clrscr();
+			}
+			$scr->at($displayrows + 1, 0);
+			$scr->clreol();
+			#$scr->puts("viewfrom: $viewfrom, viewto: $viewto, render_length: $render_length, update_viewport: $update_viewport");
+		}
+		$scr->at($scr->rows, 0);	# TODO: is this really needed?
+	} elsif ($status == 3) {	# 3x: REDIRECT
+		#print "REDIRECT\n";
+		# TODO: limit redirects? or warn?
+		$url = expand_url($url, $meta);
+		return;
+	} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
+		print "TEMPORARY FAILURE\n";
+	} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
+		print "PERMANENT FAILURE\n";
+	} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
+		print "CLIENT CERTIFICATE REQUIRED\n";
+	} else {
+		die "Invalid status code in response";
+	}
+
+	# - optionally: autorecognize types of links, e.g. .png, .jpg, .mp4, .ogg, and offer to open (inline vs. dedicated program?)
+	# - compose relative links into whole links
+	# - style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
+	# - style headers 1-3
+	# - style bullet points
+	# - style preformatted mode
+	# - style quote lines
+}
+
+sub open_html {
+	clean_exit "Not implemented.";
+}
+
+sub open_gopher {
+	clean_exit "Not implemented.";
+}
+
+sub open_file {
+	clean_exit "Not implemented.";
+}
+
+sub open_url {
+	if (uri_class($_[0]) eq 'gemini') {
+		open_gmi $_[0];
+	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
+		open_html $_[0];
+	} elsif (uri_class($_[0]) eq 'gopher') {
+		open_gopher $_[0];
+	} elsif (uri_class($_[0]) eq 'file') {
+		open_file $_[0];
+	} else {
+		clean_exit "Protocol not supported.";
+	}
+}
+
 # init
 Net::SSLeay::initialize();	# initialize ssl library once
 
@@ -275,157 +479,10 @@ unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
 # process user input
-my $url;
-my $domain;
-
-# validate input - is this correct gemini URI format?
 $url = "$ARGV[0]";
-unless (uri_class($url) eq 'gemini') {
-	clean_exit "Protocol not supported.";
+
+while ($url) {
+	open_url $url;
 }
-
-# TODO: turn this into a sub
-$domain = gem_host($url);
-
-# sslcat request
-# TODO: avoid sslcat if viewing local file
-#
-# ALTERNATIVES TO sslcat:
-# printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
-# printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
-(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$url\r\n");	# has to end with CRLF ('\r\n')
-											# $err, $server_cert not usable IME
-
-# gemini://gemini.circumlunar.space/docs/specification.gmi
-# first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
-# <STATUS>: 2-digit numeric; only the first digit may be needed for the client
-#	- 1x:	INPUT
-#		* <META> is a prompt to display to the user
-#		* after user input, request the same resource again with the user input as the query component
-#		* query component is separated from the path by '?'. Reserved characters including spaces must be "percent-encoded"
-#		* 11: SENSITIVE INPUT (e.g. password entry) - don't echo
-#	- 2x:	SUCCESS
-#		* <META>: MIME media type (apply to response body)
-#		* if <META> is empty string, MUST DEFAULT TO "text/gemini; charset=utf-8"
-#	- 3x:	REDIRECT
-#		* <META>: new URL
-#		* 30: REDIRECT - TEMPORARY
-#		* 31: REDIRECT - PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
-#	- 4x:	TEMPORARY FAILURE
-#		* <META>: additional information about the failure. Client should display this to the user.
-#		* 40: TEMPORARY FAILURE
-#		* 41: SERVER UNAVAILABLE (due to overload or maintenance)
-#		* 42: CGI ERROR
-#		* 43: PROXY ERROR
-#		* 44: SLOW DOWN
-#	- 5x:	PERMANENT FAILURE
-#		* <META>: additional information, client to display this to the user
-#		* 50: PERMANENT FAILURE
-#		* 51: NOT FOUND
-#		* 52: GONE
-#		* 53: PROXY REQUEST REFUSED
-#		* 59: BAD REQUEST
-#	- 6x:	CLIENT CERTIFICATE REQUIRED
-#		* <META>: _may_ provide additional information on certificat requirements or why a cert was rejected
-#		* 60: CLIENT CERTIFICATE REQUIRED
-#		* 61: CERTIFICATE NOT AUTHORIZED
-#		* 62: CERTIFICATE NOT VALID
-# <META>: UTF-8 encoded, max 1024 bytes
-# The distinction between 4x and 5x is mostly for "well-behaved automated clients"
-
-# TODO: process basic reply elements: header (status, meta), body (if applicable)
-# TODO: process language, encoding
-
-my @response =	lines($raw_response);
-my $header =	shift @response;
-(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
-my $status = substr $full_status, 0, 1;
-my @render;	# render array
-my @links;	# array containing links in the page
-
-#$scr->puts("Status: $status\n");
-#$scr->puts("Meta: $meta\n");
-
-# Process $status
-if ($status == 1) {		# 1x: INPUT
-	print "INPUT\n";
-} elsif ($status == 2) {	# 2x: SUCCESS
-	$scr->puts("SUCCESS\n");
-	gmirender \@response, \@render, \@links;	# TODO: add second, empty array, and fill that one up (will likely have different line number)
-	$scr->noecho();
-	$scr->clrscr();
-	my $displayrows = $scr->rows - 2;
-	my $quit = 0;
-	my $viewfrom = 0;	# top line to be shown
-	my $viewto;
-	my $render_length = scalar(@render);
-	my $update_viewport = 1;
-	while (not $quit) {
-		$viewto = min($viewfrom + $displayrows, $render_length - 1);
-		if ($update_viewport == 1) {
-			# TODO: set 'opost' outside of the loop?
-			IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
-			$scr->puts(join("\n", @render[$viewfrom..$viewto]));
-		}
-		$update_viewport = 0;
-
-		$scr->at($displayrows + 1, 0);
-		my $c = $scr->getch();
-
-		if ($c eq 'q') {
-			$quit = 1;
-		} elsif ($c eq ' ' || $c eq 'pgdn') {
-			if ($viewto < $render_length - 1) {
-				$update_viewport = 1;
-			}
-			$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
-		} elsif ($c eq 'b' || $c eq 'pgup') {
-			if ($viewfrom > 0) {
-				$update_viewport = 1;
-			}
-			$viewfrom = max($viewfrom - $displayrows, 0);
-		} elsif ($c eq 'kd') {
-			if ($viewto < $render_length - 1) {
-				$update_viewport = 1;
-				$viewfrom++;
-			}
-		} elsif ($c eq 'ku') {
-			if ($viewfrom > 0) {
-				$update_viewport = 1;
-				$viewfrom--;
-			}
-		} elsif ( $c =~ /\d/ ) {
-			# TODO: open link with new URL request
-		}
-
-		if ($update_viewport == 1) {
-			$scr->clrscr();
-		}
-		$scr->at($displayrows + 1, 0);
-		$scr->clreol();
-		#$scr->puts("viewfrom: $viewfrom, viewto: $viewto, render_length: $render_length, update_viewport: $update_viewport");
-	}
-	$scr->at($scr->rows, 0);
-} elsif ($status == 3) {	# 3x: REDIRECT
-	print "REDIRECT\n";
-} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
-	print "TEMPORARY FAILURE\n";
-} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
-	print "PERMANENT FAILURE\n";
-} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
-	print "CLIENT CERTIFICATE REQUIRED\n";
-} else {
-	die "Invalid status code in response";
-}
-
-# transform response body
-# - link lines into links
-# - optionally: autorecognize types of links, e.g. .png, .jpg, .mp4, .ogg, and offer to open (inline vs. dedicated program?)
-# - compose relative links into whole links
-# - style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
-# - style headers 1-3
-# - style bullet points
-# - style preformatted mode
-# - style quote lines
 
 clean_exit;
