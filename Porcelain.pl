@@ -332,6 +332,7 @@ sub open_gmi {	# url
 	my $status = substr $full_status, 0, 1;
 	my @render;	# render array
 	my @links;	# array containing links in the page
+	$url =~ s/[^[:print:]]//g;
 
 	# Process $status
 	if ($status == 1) {		# 1x: INPUT
@@ -387,10 +388,14 @@ sub open_gmi {	# url
 					clean_exit "link number outside of range of current page";
 				}
 				# open link with new URL request
-				$scr->put("url: $url, ");
+				$scr->at($displayrows - 2, 0);
+				#my $next_rel = "games";
+				#my $clean_url = $url;	# remove non-printable characters; I suspect it contains \r
+				#$clean_url =~ s/[^[:print:]]+//g;
+				#my $next_abs = join('/', $clean_url, $next_rel);
+
 				$url = expand_url($url, $links[$c - 1]);
-				$scr->puts("link: " . $links[$c - 1] . ", next url: " . $url . "\n");
-				clean_exit;
+				$scr->puts($url);
 				return;
 			}
 
@@ -403,9 +408,11 @@ sub open_gmi {	# url
 		}
 		$scr->at($scr->rows, 0);	# TODO: is this really needed?
 	} elsif ($status == 3) {	# 3x: REDIRECT
-		#print "REDIRECT\n";
+		print "REDIRECT\n";
 		# TODO: limit redirects? or warn?
 		$url = expand_url($url, $meta);
+		print $url;
+		exit;
 		return;
 	} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
 		print "TEMPORARY FAILURE\n";
