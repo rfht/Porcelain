@@ -54,7 +54,7 @@ use warnings;
 use feature 'unicode_strings';
 package Porcelain::Main;
 
-use IO::Prompter;					# misc/p5-IO-Prompter; for prompt()
+#use IO::Prompter;					# misc/p5-IO-Prompter; for prompt()
 #use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
 use IO::Stty;
 my $stty_restore = IO::Stty::stty(\*STDIN, '-g');
@@ -230,9 +230,19 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 				$line = $_ =~ s/^>[[:blank:]]*(.*)/> $1/r;
 			} else {				# Text line
 				$line = $_ =~ s/^[[:blank:]]*//r;
+				# TODO: collapse multiple whitespace characters into one space?
+				my $splitpos;
+				undef $splitpos;
+				while (length($line) > $scr->cols) {
+					$splitpos = rindex($line, ' ', $scr->cols - 1);
+					substr($line, $splitpos, 1) = '|';
+					push @$outarray, substr($line, 0, $splitpos);
+					$line = substr($line, $splitpos + 1);
+				}
 			}
 		} else {					# display preformatted text
-			$line = $_ . (" " x ($scr->cols - length($_)));
+			$line = substr($_, 0, $scr->cols);	# TODO: disable the terminal's linewrap rather than truncating
+			$line = $line . (" " x ($scr->cols - length($line)));
 			$line = $scr->colored('black on cyan', $line);
 		}
 		if ($skipline == 0) {
@@ -423,8 +433,8 @@ sub open_gmi {	# url
 						}
 					}
 				}
-				unless ($c < scalar(@links)) {
-					clean_exit "link number outside of range of current page";
+				unless ($c <= scalar(@links)) {
+					clean_exit "link number outside of range of current page: $c";
 				}
 				# open link with new URL request
 				$scr->at($displayrows - 2, 0);
