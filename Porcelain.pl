@@ -111,6 +111,8 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 		return 'relative';
 	} elsif ($_[0] =~ m{^[[:alnum:]]}) {
 		return 'relative';
+	} elsif ($_[0] =~ m{^\.}) {
+		return 'relative';
 	} else {
 		return '';
 	}
@@ -124,14 +126,20 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 	# TODO: check that $cururl is absolute (e.g. uri_class is 'gemini', 'https', 'http', 'gopher', 'file')
 
 	if (uri_class($newurl) eq 'relative') {
-		# get exactly one '/' separator
-		# remove trailing '/' from $cururl
-		$cururl =~ s/\/*$//;
-		if ($newurl =~ /^\//) {
-			$newurl = $cururl . $newurl;
-		} else {
-			$newurl = join('/', $cururl, $newurl);
+		my $curdir;
+		$curdir = substr($cururl, 0, rindex($cururl, '/') + 1);
+		$newurl =~ s/^\/+//;
+		$scr->puts($curdir);
+		while ($newurl =~ m{^\.{1,2}/?}) {
+			$scr->puts("adjusting path");
+			$newurl =~ s/^\.\///;
+			if ($newurl =~ m{^\.\./?}) {
+				$scr->puts(".. FOUND:");
+				$curdir =~ s/[^\/]*\/$//;
+				$newurl =~ s/^\.\.\/?//;
+			}
 		}
+		$newurl = $curdir . $newurl;
 	}
 
 	return $newurl;
