@@ -29,6 +29,7 @@
 #  - gemini://gmi.wikdict.com/							-> just returns 0
 #  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof	-> returns "53 Proxy Requet Refused"
 #  - gemini://gemini.circumlunar.space/software/				-> header1 not displayed
+#  - gemini://chriswere.uk/gemserver.gmi					-> in half terminal window misses first few lines
 
 # TODO:
 # - look up pledge and unveil examples and best practices
@@ -43,6 +44,10 @@
 # - line break at work boundaries rather than in the middle of a word.
 # - deal with terminal line wrap. Make sure subsequent content isn't printed *over* wrapped lines.
 #	Example: gemini://hexdsl.co.uk/
+# - implement server certificate check
+# - xdg-open or other config for using external programs (browser, mpv etc.) for protocol/content types
+# - limit size of history; can be configurable in whatever config approach is later chosen
+# - when last line in display is end of text and I press down arrow, the last line disappears. E.g. chriswere.uk/
 
 use strict;
 use warnings;
@@ -72,6 +77,7 @@ my $text = Text::Format->new;
 $text->columns($scr->cols);
 
 my $url;
+my @history;
 
 sub clean_exit {
 	IO::Stty::stty(\*STDIN, $stty_restore);
@@ -220,7 +226,8 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 				$line = $_ =~ s/^[[:blank:]]*//r;
 			}
 		} else {					# display preformatted text
-			$line = $scr->colored('black on cyan', $_);
+			$line = $_ . (" " x ($scr->cols - length($_)));
+			$line = $scr->colored('black on cyan', $line);
 		}
 		if ($skipline == 0) {
 			push @$outarray, $line;
@@ -275,6 +282,9 @@ cleanup2:
 }
 
 sub open_gmi {	# url
+	# log to @history
+	push @history, $_[0];
+
 	my $domain = gem_host($_[0]);
 
 	# sslcat request
@@ -316,7 +326,7 @@ sub open_gmi {	# url
 	#		* 53: PROXY REQUEST REFUSED
 	#		* 59: BAD REQUEST
 	#	- 6x:	CLIENT CERTIFICATE REQUIRED
-	#		* <META>: _may_ provide additional information on certificat requirements or why a cert was rejected
+	#		* <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 	#		* 60: CLIENT CERTIFICATE REQUIRED
 	#		* 61: CERTIFICATE NOT AUTHORIZED
 	#		* 62: CERTIFICATE NOT VALID
@@ -359,8 +369,17 @@ sub open_gmi {	# url
 			$scr->at($displayrows + 1, 0);
 			my $c = $scr->getch();
 
-			if ($c eq 'q') {	# quit
+			if ($c eq 'h') {	# history
+				$scr->puts(join(' ', @history));
+				clean_exit;
+			} elsif ($c eq 'H') {	# home
+				$url = "gemini://gemini.circumlunar.space/";
+				return;
+			} elsif ($c eq 'q') {	# quit
 				undef $url;
+				return;
+			} elsif ( $c =~ /\cH/ ) {	# Ctrl-H: back navigation (TODO: not sure how backspace can be used)
+				$url = $history[-2];
 				return;
 			} elsif ($c eq ' ' || $c eq 'pgdn') {
 				if ($viewto < $render_length - 1) {
@@ -383,17 +402,11 @@ sub open_gmi {	# url
 					$viewfrom--;
 				}
 			} elsif ( $c =~ /\d/ ) {
-				# check that $c is < scalar(@links)
 				unless ($c < scalar(@links)) {
 					clean_exit "link number outside of range of current page";
 				}
 				# open link with new URL request
 				$scr->at($displayrows - 2, 0);
-				#my $next_rel = "games";
-				#my $clean_url = $url;	# remove non-printable characters; I suspect it contains \r
-				#$clean_url =~ s/[^[:print:]]+//g;
-				#my $next_abs = join('/', $clean_url, $next_rel);
-
 				$url = expand_url($url, $links[$c - 1]);
 				$scr->puts($url);
 				return;
@@ -486,7 +499,11 @@ unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
 # process user input
-$url = "$ARGV[0]";
+if (scalar @ARGV == 0) {	# no URI passed
+	$url = "gemini://gemini.circumlunar.space/";
+} else {
+	$url = "$ARGV[0]";
+}
 
 while ($url) {
 	open_url $url;
