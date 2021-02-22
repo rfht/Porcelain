@@ -36,18 +36,15 @@
 # - fix NOT WORKING sites above
 # - keep testing with gemini://gemini.conman.org/test/torture/
 # - implement a working pager (IO::Pager::Perl not working)
-# - implement forwarding
 # - search "TODO" in comments
-# - import IO::Stty to ports
+# - import IO::Stty and others in mystuff/misc to ports
 # - check number of columns and warn if too few (< 80) ?
 # - intercept Ctrl-C and properly exit when it's pressed
 # - line break at work boundaries rather than in the middle of a word.
 # - deal with terminal line wrap. Make sure subsequent content isn't printed *over* wrapped lines.
 #	Example: gemini://hexdsl.co.uk/
-# - implement server certificate check
 # - xdg-open or other config for using external programs (browser, mpv etc.) for protocol/content types
 # - limit size of history; can be configurable in whatever config approach is later chosen
-# - when last line in display is end of text and I press down arrow, the last line disappears. E.g. chriswere.uk/
 
 # DEPENDENCIES:
 # - xdg-utils for xdg-open
@@ -69,6 +66,7 @@ require Net::SSLeay;					# p5-Net-SSLeay
 Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
+use Pod::Usage;
 use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
 #use Term::Cap;						# for ->Tputs?? To reset terminal?
 use Term::ScreenColor;
@@ -657,3 +655,74 @@ while ($url) {
 }
 
 clean_exit;
+
+__END__
+
+=head1 NAME
+
+Porcelain - a gemini browser
+
+=head1 SYNOPSIS
+
+Porcelain.pl [url]
+
+=head1 DESCRIPTION
+
+B<This program> is a text-based browser for gemini pages. It uses
+OpenBSD's pledge and unveil technologies.
+
+=head1 KEYS
+
+=over
+
+=item h
+
+Display browsing history.
+
+=item H
+
+Return to home page.
+
+=item I
+
+Print infos (mostly for debugging).
+
+=item q
+
+Quit the application.
+
+=item Ctrl-H
+
+Go back in browsing history.
+
+=item Space/Page Down
+
+Scroll down page-wise.
+
+=item B/Page Up
+
+Scroll up page-wise.
+
+=item Down
+
+Scroll down line-wise.
+
+=item Up
+
+Scroll up line-wise.
+
+=item Home
+
+Go to the beginning of the page.
+
+=item End
+
+Go to the end of the page.
+
+=item 1,2,3,...
+
+Open link with that number.
+
+=back
+
+=cut
