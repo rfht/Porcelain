@@ -129,12 +129,9 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 		my $curdir;
 		$curdir = substr($cururl, 0, rindex($cururl, '/') + 1);
 		$newurl =~ s/^\/+//;
-		$scr->puts($curdir);
 		while ($newurl =~ m{^\.{1,2}/?}) {
-			$scr->puts("adjusting path");
 			$newurl =~ s/^\.\///;
 			if ($newurl =~ m{^\.\./?}) {
-				$scr->puts(".. FOUND:");
 				$curdir =~ s/[^\/]*\/$//;
 				$newurl =~ s/^\.\.\/?//;
 			}
