@@ -49,6 +49,9 @@
 # - limit size of history; can be configurable in whatever config approach is later chosen
 # - when last line in display is end of text and I press down arrow, the last line disappears. E.g. chriswere.uk/
 
+# DEPENDENCIES:
+# - xdg-utils for xdg-open
+
 use strict;
 use warnings;
 use feature 'unicode_strings';
@@ -483,7 +486,9 @@ sub open_gmi {	# url
 }
 
 sub open_html {
-	clean_exit "Not implemented.";
+	system("xdg-open $_[0]");
+	# return to gemini url
+	$url = $history[-1];
 }
 
 sub open_gopher {
@@ -526,7 +531,8 @@ Net::SSLeay::initialize();	# initialize ssl library once
 #	Term::Screen		proc
 #	Term::ReadKey - ReadMode 0	tty	- NOT USING
 #	IO::Stty::stty		tty
-pledge(qw ( tty rpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
+#	system (for xdg-open)	exec
+pledge(qw ( exec tty rpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
 ## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
@@ -537,6 +543,7 @@ unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to 
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
 unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
+unveil( "/usr/local/bin/xdg-open", "x") || die "Unable to unveil: $!";
 # ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
