@@ -54,6 +54,8 @@ use warnings;
 use feature 'unicode_strings';
 package Porcelain::Main;
 
+use IO::Prompter;					# misc/p5-IO-Prompter; for prompt()
+#use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
 use IO::Stty;
 my $stty_restore = IO::Stty::stty(\*STDIN, '-g');
 use List::Util qw(min max);
@@ -61,7 +63,7 @@ require Net::SSLeay;					# p5-Net-SSLeay
 Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
-#use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
+use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
 #use Term::Cap;						# for ->Tputs?? To reset terminal?
 use Term::ScreenColor;
 use Text::Format;					# p5-Text-Format
@@ -101,6 +103,10 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 		return 'gopher';
 	} elsif ($_[0] =~ m{^file://}) {
 		return 'file';
+	} elsif ($_[0] =~ m{^mailto:}) {
+		return 'mailto';
+	} elsif ($_[0] =~ m{://}) {		# unsupported protocol
+		return '';
 	} elsif ($_[0] =~ m{^/}) {
 		return 'relative';
 	} elsif ($_[0] =~ m{^[[:alnum:]]}) {
@@ -402,6 +408,21 @@ sub open_gmi {	# url
 					$viewfrom--;
 				}
 			} elsif ( $c =~ /\d/ ) {
+				# supports up to 999 links in a page
+				if (scalar(@links) >= 10) {
+					# TODO: allow infinitely long digits by using do ... while? https://www.perlmonks.org/?node_id=282322
+					my $keypress = ReadKey(1);
+					if (defined $keypress && $keypress =~ /\d/) {	# ignore non-digit input
+						$c .= $keypress;
+						if (scalar(@links) >= 100) {
+							undef $keypress;
+							my $keypress = ReadKey(1);
+							if (defined $keypress && $keypress =~ /\d/) {
+								$c .= $keypress;
+							}
+						}
+					}
+				}
 				unless ($c < scalar(@links)) {
 					clean_exit "link number outside of range of current page";
 				}
@@ -458,6 +479,10 @@ sub open_file {
 	clean_exit "Not implemented.";
 }
 
+sub open_mailto {
+	clean_exit "Not implemented.";
+}
+
 sub open_url {
 	if (uri_class($_[0]) eq 'gemini') {
 		open_gmi $_[0];
@@ -467,6 +492,8 @@ sub open_url {
 		open_gopher $_[0];
 	} elsif (uri_class($_[0]) eq 'file') {
 		open_file $_[0];
+	} elsif (uri_class($_[0]) eq 'mailto') {
+		open_mailto $_[0];
 	} else {
 		clean_exit "Protocol not supported.";
 	}
