@@ -57,6 +57,9 @@ use warnings;
 use feature 'unicode_strings';
 package Porcelain::Main;
 
+use Crypt::OpenSSL::X509;
+use DateTime;
+use DateTime::Format::x509;
 #use IO::Prompter;					# misc/p5-IO-Prompter; for prompt()
 #use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
 use IO::Stty;
@@ -70,6 +73,7 @@ use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty,
 #use Term::Cap;						# for ->Tputs?? To reset terminal?
 use Term::ScreenColor;
 use Text::Format;					# p5-Text-Format
+#use Time::Piece;
 #use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
 use utf8;						# TODO: really needed?
 
@@ -83,6 +87,23 @@ $text->columns($scr->cols);
 
 my $url;
 my @history;
+
+my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
+if (! -d $porcelain_dir) {
+	mkdir $porcelain_dir || die "Unable to create $porcelain_dir";
+}
+my $hosts_file = $porcelain_dir . "/known_hosts";
+my @known_hosts;
+if (-e $hosts_file) {
+	my $raw_hosts;
+	open(my $fh, '<', $hosts_file) or die "cannot open $hosts_file";
+	{
+		local $/;
+		$raw_hosts = <$fh>;
+	}
+	close($fh);
+	@known_hosts = split('\n', $raw_hosts);
+}
 
 sub clean_exit {
 	IO::Stty::stty(\*STDIN, $stty_restore);
@@ -305,6 +326,64 @@ cleanup2:
 	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
+sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
+	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
+	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
+	# known host?
+	my $common_name = $x509->subject();
+	#my $common_name =~ s/^CN=//;	# may not need this
+	# TODO: does $common_name match the domain?
+	# has cert expired (or is it not yet valid)?
+	my $f = DateTime::Format::x509->new();
+	if (DateTime->today() < $f->parse_datetime($x509->notBefore())) {
+	        print "cert is older than notBefore date\n";
+	        return 1;
+	}
+	if (DateTime->today() > $f->parse_datetime($x509->notAfter())) {
+	        print "cert is past notAfter date\n";
+	        return 1;
+	}
+	if (scalar(grep(/^$common_name/, @known_hosts)) > 0) {
+		# if known, does cert match?
+		my $local_cert;
+		my $found_cert = 0;
+		my $cert_body = 0;
+		# TODO: check the stored expiration date? see gemini://gemini.circumlunar.space/docs/specification.gmi
+		foreach (@known_hosts) {
+			if ($_ eq $common_name) {
+				$found_cert = 1;
+			}
+			if (not $found_cert) {
+				next;
+			}
+			if ($_ eq '-----BEGIN CERTIFICATE-----') {
+				$cert_body = 1;
+			}
+			if ($cert_body) {
+				$local_cert .= $_;
+				if ($_ eq '-----END CERTIFICATE-----') {
+					last;
+				}
+			}
+		}
+		$PEM = join('', split("\n", $PEM));
+		if ($local_cert eq $PEM) {
+			return 0;
+		} else {
+			return 1;
+		}
+	} else {
+		# TOFU: add to known_hosts on first use
+		# Write the new entry to $hosts_file
+		open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
+		$fh->say($common_name);
+		$fh->say($x509->notAfter());
+		$fh->print($PEM);
+		close $fh;
+		return 0;
+	}
+}
+
 sub open_gmi {	# url
 	# log to @history
 	push @history, $_[0];
@@ -319,6 +398,8 @@ sub open_gmi {	# url
 	# printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
 	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n");	# has to end with CRLF ('\r\n')
 												# $err, $server_cert not usable IME
+	# validate server certificate via TOFU (trust on first use)
+	validate_cert($server_cert) && clean_exit "Error while checking server certificate";
 
 	# gemini://gemini.circumlunar.space/docs/specification.gmi
 	# first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
@@ -392,6 +473,8 @@ sub open_gmi {	# url
 
 			$scr->at($displayrows + 1, 0);
 			my $c = $scr->getch();
+			#$scr->at($displayrows + 1, 0)->puts("You pressed: " . $c);
+			#clean_exit;
 
 			if ($c eq 'h') {	# history
 				$scr->puts(join(' ', @history));
@@ -399,6 +482,8 @@ sub open_gmi {	# url
 			} elsif ($c eq 'H') {	# home
 				$url = "gemini://gemini.circumlunar.space/";
 				return;
+			} elsif ($c eq 'I') {	# info
+				$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@history));
 			} elsif ($c eq 'q') {	# quit
 				undef $url;
 				return;
@@ -408,13 +493,13 @@ sub open_gmi {	# url
 			} elsif ($c eq ' ' || $c eq 'pgdn') {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
+					$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
 				}
-				$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
 			} elsif ($c eq 'b' || $c eq 'pgup') {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
+					$viewfrom = max($viewfrom - $displayrows, 0);
 				}
-				$viewfrom = max($viewfrom - $displayrows, 0);
 			} elsif ($c eq 'kd') {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
@@ -424,6 +509,16 @@ sub open_gmi {	# url
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom--;
+				}
+			} elsif ($c eq 'home') {
+				if ($viewfrom > 0) {
+					$update_viewport = 1;
+					$viewfrom = 0;
+				}
+			} elsif ($c eq 'end') {
+				if ($viewto < $render_length - 1) {
+					$update_viewport = 1;
+					$viewfrom = $render_length - $displayrows - 1;
 				}
 			} elsif ( $c =~ /\d/ ) {
 				# supports up to 999 links in a page
@@ -445,17 +540,17 @@ sub open_gmi {	# url
 					clean_exit "link number outside of range of current page: $c";
 				}
 				# open link with new URL request
-				$scr->at($displayrows - 2, 0);
+				$scr->at($displayrows, 0);
 				$url = expand_url($url, $links[$c - 1]);
 				$scr->puts($url);
 				return;
 			}
 
 			if ($update_viewport == 1) {
-			$scr->clrscr();
+				$scr->clrscr();
 			}
-			$scr->at($displayrows + 1, 0);
-			$scr->clreol();
+			#$scr->at($displayrows + 1, 0);
+			#$scr->clreol();
 			#$scr->puts("viewfrom: $viewfrom, viewto: $viewto, render_length: $render_length, update_viewport: $update_viewport");
 		}
 		$scr->at($scr->rows, 0);	# TODO: is this really needed?
@@ -532,7 +627,7 @@ Net::SSLeay::initialize();	# initialize ssl library once
 #	Term::ReadKey - ReadMode 0	tty	- NOT USING
 #	IO::Stty::stty		tty
 #	system (for xdg-open)	exec
-pledge(qw ( exec tty rpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
+pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
 ## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
@@ -540,10 +635,13 @@ pledge(qw ( exec tty rpath inet dns proc unveil ) ) || die "Unable to pledge: $!
 # ### LEAVE OUT UNTIL USING ### unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
+unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
 unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
+#unveil( "/bin/stty", "x") || die "Unable to unveil: $!";
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 unveil( "/usr/local/bin/xdg-open", "x") || die "Unable to unveil: $!";
+unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 # ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
