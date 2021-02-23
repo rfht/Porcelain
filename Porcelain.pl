@@ -28,29 +28,27 @@
 #  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof
 #  - gemini://gemini.circumlunar.space/software/
 #  - gemini://chriswere.uk/gemserver.gmi
-#
-#  NOT WORKING:
-#  - gemini://playonbsd.com			-> returns "31 /"
 
 # TODO:
 # - look up pledge and unveil examples and best practices
-# - fix NOT WORKING sites above
 # - keep testing with gemini://gemini.conman.org/test/torture/
 # - implement a working pager (IO::Pager::Perl not working)
 # - search "TODO" in comments
 # - import IO::Stty and others in mystuff/misc to ports
 # - check number of columns and warn if too few (< 80) ?
 # - intercept Ctrl-C and properly exit when it's pressed
-# - line break at work boundaries rather than in the middle of a word.
-# - deal with terminal line wrap. Make sure subsequent content isn't printed *over* wrapped lines.
-#	Example: gemini://hexdsl.co.uk/
-# - xdg-open or other config for using external programs (browser, mpv etc.) for protocol/content types
+# - fix the header graphics incomplete on the right: gemini://hexdsl.co.uk/
 # - limit size of history; can be configurable in whatever config approach is later chosen
 # - Links: if there is no link description, just display the link itself rather than an empty line
 # - remove problematic unveils, e.g. /bin/sh that could be used to do almost anything
-
-# DEPENDENCIES:
-# - xdg-utils for xdg-open
+# - fix the use of duplicate '/' when opening links, e.g. when browsing through gemini://playonbsd.com
+# - switch from Term::Screen to Curses
+# - implement a video to view history
+# - implement subscribed option
+# - fix 2 empty lines after level 1 header
+# - mandate 1 and only 1 empty line after all headers?
+# - implement a way to handle image and audio file links, e.g. on gemini://chriswere.uk/trendytalk/
+# - allow theming (colors etc) via a config file?
 
 use strict;
 use warnings;
@@ -152,9 +150,10 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 	# TODO: check that $cururl is absolute (e.g. uri_class is 'gemini', 'https', 'http', 'gopher', 'file')
 
 	if (uri_class($newurl) eq 'relative') {
-		my $curdir;
-		$curdir = substr($cururl, 0, rindex($cururl, '/') + 1);
-		$newurl =~ s/^\/+//;
+		my $curdir = $cururl;
+		if ($curdir =~ m{://.+/}) {
+			$curdir = substr($cururl, 0, rindex($cururl, '/') + 1);
+		}
 		while ($newurl =~ m{^\.{1,2}/?}) {
 			$newurl =~ s/^\.\///;
 			if ($newurl =~ m{^\.\./?}) {
@@ -164,7 +163,6 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 		}
 		$newurl = $curdir . $newurl;
 	}
-
 	return $newurl;
 }
 
@@ -391,8 +389,7 @@ sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 }
 
 sub open_gmi {	# url
-	# log to @history
-	push @history, $_[0];
+	push @history, $_[0];	# log to @history
 
 	my $domain = gem_host($_[0]);
 
@@ -416,33 +413,20 @@ sub open_gmi {	# url
 	#		* query component is separated from the path by '?'. Reserved characters including spaces must be "percent-encoded"
 	#		* 11: SENSITIVE INPUT (e.g. password entry) - don't echo
 	#	- 2x:	SUCCESS
-	#		* <META>: MIME media type (apply to response body)
-	#		* if <META> is empty string, MUST DEFAULT TO "text/gemini; charset=utf-8"
+	#		* <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
 	#	- 3x:	REDIRECT
 	#		* <META>: new URL
-	#		* 30: REDIRECT - TEMPORARY
-	#		* 31: REDIRECT - PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
+	#		* 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 	#	- 4x:	TEMPORARY FAILURE
 	#		* <META>: additional information about the failure. Client should display this to the user.
-	#		* 40: TEMPORARY FAILURE
-	#		* 41: SERVER UNAVAILABLE (due to overload or maintenance)
-	#		* 42: CGI ERROR
-	#		* 43: PROXY ERROR
-	#		* 44: SLOW DOWN
+	#		* 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
 	#	- 5x:	PERMANENT FAILURE
 	#		* <META>: additional information, client to display this to the user
-	#		* 50: PERMANENT FAILURE
-	#		* 51: NOT FOUND
-	#		* 52: GONE
-	#		* 53: PROXY REQUEST REFUSED
-	#		* 59: BAD REQUEST
+	#		* 50: PERMANENT FAILURE, 51: NOT FOUND, 52: GONE, 53: PROXY REQUEST REFUSED, 59: BAD REQUEST
 	#	- 6x:	CLIENT CERTIFICATE REQUIRED
 	#		* <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
-	#		* 60: CLIENT CERTIFICATE REQUIRED
-	#		* 61: CERTIFICATE NOT AUTHORIZED
-	#		* 62: CERTIFICATE NOT VALID
+	#		* 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
 	# <META>: UTF-8 encoded, max 1024 bytes
-	# The distinction between 4x and 5x is mostly for "well-behaved automated clients"
 
 	# TODO: process basic reply elements: header (status, meta), body (if applicable)
 	# TODO: process language, encoding
@@ -548,9 +532,8 @@ sub open_gmi {	# url
 					clean_exit "link number outside of range of current page: $c";
 				}
 				# open link with new URL request
-				$scr->at($displayrows, 0);
 				$url = expand_url($url, $links[$c - 1]);
-				$scr->puts($url);
+				$scr->at($displayrows + 1, 0)->puts($url);
 				return;
 			}
 
@@ -563,11 +546,10 @@ sub open_gmi {	# url
 		}
 		$scr->at($scr->rows, 0);	# TODO: is this really needed?
 	} elsif ($status == 3) {	# 3x: REDIRECT
-		print "REDIRECT\n";
+		chomp $url;
+		chomp $meta;
 		# TODO: limit redirects? or warn?
 		$url = expand_url($url, $meta);
-		print $url;
-		exit;
 		return;
 	} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
 		print "TEMPORARY FAILURE\n";
@@ -685,7 +667,11 @@ unveil() || die "Unable to lock unveil: $!";
 if (scalar @ARGV == 0) {	# no URI passed
 	$url = "gemini://gemini.circumlunar.space/";
 } else {
-	$url = "$ARGV[0]";
+	if (not $ARGV[0] =~ m{://}) {
+		$url = 'gemini://' . $ARGV[0];
+	} else {
+		$url = "$ARGV[0]";
+	}
 }
 
 while ($url) {
@@ -706,7 +692,7 @@ Porcelain.pl [url]
 
 =head1 DESCRIPTION
 
-B<This program> is a text-based browser for gemini pages. It uses
+B<Porcelain> is a text-based browser for gemini pages. It uses
 OpenBSD's pledge and unveil technologies.
 
 =head1 KEYS
@@ -762,5 +748,9 @@ Go to the end of the page.
 Open link with that number.
 
 =back
+
+=head1 FILES
+
+~/.porcelain/open.conf
 
 =cut
