@@ -121,20 +121,18 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 }
 
 sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
-			# no change if URL is already absolute
+			# no change if $newurl is already absolute
 	my $cururl = $_[0];
 	my $newurl = $_[1];
-
-	# TODO: check that $cururl is absolute (e.g. uri_class is 'gemini', 'https', 'http', 'gopher', 'file')
 	if (uri_class($newurl) eq 'relative') {
 		my $curdir = $cururl;
 		if ($curdir =~ m{://.+/}) {
-			$curdir = substr($cururl, 0, rindex($cururl, '/') + 1);
+			$curdir = substr($cururl, 0, rindex($cururl, '/'));
 		}
 		while ($newurl =~ m{^\.{1,2}/?}) {
 			$newurl =~ s/^\.\///;
 			if ($newurl =~ m{^\.\./?}) {
-				$curdir =~ s/[^\/]*\/$//;
+				$curdir =~ s/\/[^\/]*\/?$//;
 				$newurl =~ s/^\.\.\/?//;
 			}
 		}
