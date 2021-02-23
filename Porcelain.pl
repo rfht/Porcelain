@@ -44,6 +44,7 @@ use feature 'unicode_strings';
 package Porcelain::Main;
 
 use Crypt::OpenSSL::X509;
+use Curses;
 use DateTime;
 use DateTime::Format::x509;
 #use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
@@ -60,12 +61,10 @@ use Term::ScreenColor;
 use Text::Format;					# p5-Text-Format
 use utf8;						# TODO: really needed?
 
-my $scr = new Term::ScreenColor;
-$scr->colorizable(1);
-$scr->clrscr();
-
-my $text = Text::Format->new;
-$text->columns($scr->cols);
+initscr;
+start_color;	# TODO: check if (has_colors)
+my $win = newwin(0,0,0,0);
+scrollok(1);
 
 my $url;
 my @history;
@@ -93,7 +92,8 @@ if (-e $hosts_file) {
 }
 
 sub clean_exit {
-	IO::Stty::stty(\*STDIN, $stty_restore);
+	#IO::Stty::stty(\*STDIN, $stty_restore);
+	endwin;
 	# TODO: clear screen on exit? ($scr->clrscr())
 	#	Or just clear the last line at the bottom?
 	if ($_[0]) {
@@ -189,6 +189,10 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 	my $link_descr;
 	my $num_links = 0;
 	my $skipline = 0;
+	my $y;
+	my $x;
+	init_pair(1, COLOR_YELLOW, COLOR_BLACK);
+	init_pair(2, COLOR_WHITE, COLOR_BLACK);
 	foreach (@$inarray) {
 		if ($_ =~ /^```/) {		# Preformat toggle marker
 			if (not $t_preform) {
@@ -201,17 +205,23 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 		} elsif (not $t_preform) {
 			if ($_ =~ /^###/) {			# Heading 3
 				$line = $_ =~ s/^###[[:blank:]]*//r;
-				$line = bold $line;
+				attrset(COLOR_PAIR(2));
+				getyx($y, $x);
+				addstr($y, $x, $line);
+				move($y + 1, 0);
 			} elsif ($_ =~ /^##/) {			# Heading 2
 				$line = $_ =~ s/^##[[:blank:]]*//r;
-				$line = bold $line;
-				$line = underscore $line;
-				$line = $scr->colored('white', $line);
+				attrset(COLOR_PAIR(2));
+				getyx($y, $x);
+				addstr($y, $x, $line);
+				move($y + 1, 0);
 			} elsif ($_ =~ /^#/) {			# Heading 1
 				$line = $_ =~ s/^#[[:blank:]]*//r;
-				$line = bold $line;
-				$line = $scr->colored('yellow', $line);
-				$line = $text->center($line);
+				attrset(COLOR_PAIR(1));
+				attron(A_BOLD);
+				getyx($y, $x);
+				addstr($y, $x + 12, $line);
+				move($y + 2, 0);
 			} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
 				# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
 				$num_links++;
@@ -219,8 +229,13 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 				($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
 				$line = $link_descr;
-				$line = underscore $line;
+				#$line = underscore $line;
 				$line = "[" . $num_links . "]\t" . $line;
+				attrset(COLOR_PAIR(2));
+				attroff(A_BOLD);
+				getyx($y, $x);
+				addstr($y, $x, $line);
+				move($y + 1, 0);
 			} elsif ($_ =~ /^\* /) {		# Unordered List Item
 				$line = $_ =~ s/^\* [[:blank:]]*(.*)/- $1/r;
 			} elsif ($_ =~ /^>/) {			# Quote
@@ -230,22 +245,26 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 			} else {				# Text line
 				$line = $_ =~ s/^[[:blank:]]*//r;
 				# TODO: collapse multiple whitespace characters into one space?
-				my $splitpos;
-				undef $splitpos;
-				while (length($line) > $scr->cols) {
-					$splitpos = rindex($line, ' ', $scr->cols - 1);
-					substr($line, $splitpos, 1) = '|';
-					push @$outarray, substr($line, 0, $splitpos);
-					$line = substr($line, $splitpos + 1);
-				}
+				#my $splitpos;
+				#undef $splitpos;
+				#while (length($line) > $scr->cols) {
+					#$splitpos = rindex($line, ' ', $scr->cols - 1);
+					#substr($line, $splitpos, 1) = '|';
+					#push @$outarray, substr($line, 0, $splitpos);
+					#$line = substr($line, $splitpos + 1);
+				#}
+				attrset(COLOR_PAIR(2));
+				getyx($y, $x);
+				addstr($y, $x, $line);
+				move($y + 1, 0);
 			}
 		} else {					# display preformatted text
-			$line = substr($_, 0, $scr->cols);	# TODO: disable the terminal's linewrap rather than truncating
-			$line = $line . (" " x ($scr->cols - length($line)));
-			$line = $scr->colored('black on cyan', $line);
+			#$line = substr($_, 0, $scr->cols);	# TODO: disable the terminal's linewrap rather than truncating
+			#$line = $line . (" " x ($scr->cols - length($line)));
+			#$line = $scr->colored('black on cyan', $line);
 		}
 		if ($skipline == 0) {
-			push @$outarray, $line;
+			#push @$outarray, $line;
 		}
 		$skipline = 0;
 	}
@@ -390,30 +409,32 @@ sub open_gmi {	# url
 			$history_pointer = scalar(@history) - 1;
 		}
 
-		gmirender \@response, \@render, \@links;
-		$scr->noecho();
-		$scr->clrscr();
-		my $displayrows = $scr->rows - 2;
+		#my $displayrows = $scr->rows - 2;
+		my $displayrows = 30;
 		my $viewfrom = 0;	# top line to be shown
 		my $viewto;
 		my $render_length = scalar(@render);
 		my $update_viewport = 1;
 		while (1) {
-			$viewto = min($viewfrom + $displayrows, $render_length - 1);
-			if ($update_viewport == 1) {
+			gmirender \@response, \@render, \@links;
+			refresh($win);
+			my $c = getch;
+			#$viewto = min($viewfrom + $displayrows, $render_length - 1);
+			#if ($update_viewport == 1) {
 				# TODO: set 'opost' outside of the loop?
-				IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
-				$scr->puts(join("\n", @render[$viewfrom..$viewto]));
-			}
-			$update_viewport = 0;
-			my $c = $scr->getch();
+				#IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
+				#$scr->puts(join("\n", @render[$viewfrom..$viewto]));
+			#}
+			#$update_viewport = 0;
+			#my $c = $scr->getch();
+			#my $c = ReadKey;
 			if ($c eq 'h') {	# history
-				$scr->puts(join(' ', @history));
+				#$scr->puts(join(' ', @history));
 			} elsif ($c eq 'H') {	# home
 				$url = "gemini://gemini.circumlunar.space/";
 				return;
 			} elsif ($c eq 'I') {	# info
-				$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@history));
+				#$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@history));
 			} elsif ($c eq 'q') {	# quit
 				undef $url;
 				return;
@@ -454,7 +475,7 @@ sub open_gmi {	# url
 					$viewfrom = $render_length - $displayrows - 1;
 				}
 			} elsif ($c eq ':') {	# TODO: NOT WORKING!
-				$scr->at($displayrows + 1, 0)->puts(":")->normal();
+				#$scr->at($displayrows + 1, 0)->puts(":")->normal();
 				my $test = <STDIN>;
 			} elsif ( $c =~ /\d/ ) {
 				if (scalar(@links) >= 10) {
@@ -475,12 +496,12 @@ sub open_gmi {	# url
 					clean_exit "link number outside of range of current page: $c";
 				}
 				$url = expand_url($url, $links[$c - 1]);
-				$scr->at($displayrows + 1, 0)->puts($url);
+				#$scr->at($displayrows + 1, 0)->puts($url);
 				return;
 			}
 
 			if ($update_viewport == 1) {
-				$scr->clrscr();
+				#$scr->clrscr();
 			}
 		}
 	} elsif ($status == 3) {	# 3x: REDIRECT
@@ -585,6 +606,7 @@ unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by ssl
 # TODO: unveiling /bin/sh is problematic
 unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
+unveil( "/usr/local/libdata/perl5/site_perl/Curses", "rx") || die "Unable to unveil: $!";	# for Curses
 unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 if (-f $porcelain_dir . '/open.conf') {
 	%open_with = readconf($porcelain_dir . '/open.conf');
