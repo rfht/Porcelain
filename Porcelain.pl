@@ -14,21 +14,6 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-# STATUS:
-#  WORKING DOMAINS:
-#  - gemini://gemini.circumlunar.space/docs/specification.gmi
-#  - gemini://loomcom.com/thoughts.gmi
-#  - gemini://medusae.space/
-#  - gemini://playonbsd.com/index.gmi		-> fixed with sub sslcat_custom
-#  - gemini://gus.guru/				-> fixed with sub sslcat_custom
-#  - gemini://perso.pw/blog/articles/limit.gmi	-> fixed with sub sslcat_custom
-#  - gemini://gemini.circumlunar.space/software/
-#  - gemini://drewdevault.com/			-> fixed with Server Name Indication
-#  - gemini://gmi.wikdict.com/
-#  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof
-#  - gemini://gemini.circumlunar.space/software/
-#  - gemini://chriswere.uk/gemserver.gmi
-
 # TODO:
 # - look up pledge and unveil examples and best practices
 # - keep testing with gemini://gemini.conman.org/test/torture/
@@ -49,6 +34,7 @@
 # - mandate 1 and only 1 empty line after all headers?
 # - implement a way to handle image and audio file links, e.g. on gemini://chriswere.uk/trendytalk/
 # - allow theming (colors etc) via a config file?
+# - see if some Perl modules may not be needed
 
 use strict;
 use warnings;
@@ -58,7 +44,6 @@ package Porcelain::Main;
 use Crypt::OpenSSL::X509;
 use DateTime;
 use DateTime::Format::x509;
-#use IO::Prompter;					# misc/p5-IO-Prompter; for prompt()
 #use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
 use IO::Stty;
 my $stty_restore = IO::Stty::stty(\*STDIN, '-g');
@@ -69,18 +54,14 @@ use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Pod::Usage;
 use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
-#use Term::Cap;						# for ->Tputs?? To reset terminal?
 use Term::ScreenColor;
 use Text::Format;					# p5-Text-Format
-#use Time::Piece;
-#use URI;						# p5-URI - note: NO SUPPORT FOR 'gemini://'; could be used for http, gopher
 use utf8;						# TODO: really needed?
 
 my $scr = new Term::ScreenColor;
 $scr->colorizable(1);
 $scr->clrscr();
 
-# text formatter (Text::Format)
 my $text = Text::Format->new;
 $text->columns($scr->cols);
 
@@ -116,17 +97,8 @@ sub clean_exit {
 }
 
 sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
-	# TODO: just return protocol before '://'?
-	if ($_[0] =~ m{^gemini://}) {
-		return 'gemini';
-	} elsif ($_[0] =~ m{^https://}) {
-		return 'https';
-	} elsif ($_[0] =~ m{^http://}) {
-		return 'http';
-	} elsif ($_[0] =~ m{^gopher://}) {
-		return 'gopher';
-	} elsif ($_[0] =~ m{^file://}) {
-		return 'file';
+	if ($_[0] =~ m{^[[:alpha:]]+://}) {
+		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;
 	} elsif ($_[0] =~ m{^mailto:}) {
 		return 'mailto';
 	} elsif ($_[0] =~ m{://}) {		# unsupported protocol
@@ -138,7 +110,7 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	} elsif ($_[0] =~ m{^\.}) {
 		return 'relative';
 	} else {
-		return '';
+		return '';			# unsupported protocol
 	}
 }
 
@@ -148,7 +120,6 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 	my $newurl = $_[1];
 
 	# TODO: check that $cururl is absolute (e.g. uri_class is 'gemini', 'https', 'http', 'gopher', 'file')
-
 	if (uri_class($newurl) eq 'relative') {
 		my $curdir = $cururl;
 		if ($curdir =~ m{://.+/}) {
@@ -161,7 +132,11 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 				$newurl =~ s/^\.\.\/?//;
 			}
 		}
-		$newurl = $curdir . $newurl;
+		if (not $newurl =~ m{^/} && not $curdir =~ m{/$}) {
+			$newurl = $curdir . '/' . $newurl;
+		} else {
+			$newurl = $curdir . $newurl;
+		}
 	}
 	return $newurl;
 }
@@ -176,10 +151,8 @@ sub gem_host {
 sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	# TODO: is leading whitespace allowed in the spec at all?
 	# Note this function applies to both text/gemini (links, headers, unordered list, quote)
-
 	my $first =	$_[0] =~ s/[[:blank:]].*$//r;
 	my $rest =	$_[0] =~ s/^[^[:blank:]]*[[:blank:]]*//r;
-
 	return ($first, $rest);
 }
 
@@ -199,12 +172,6 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => formatted text (to outarray), linkarray
 	# note: this will manipulate the passed array, rather than return a new one
 	# call with "gmirender \@array \@outarray \@linkarray"
-	# TODO: what to do with the link targets?
-	# TODO: process "alt text" of initial preformat marker (text that follows)
-	# Note: Any text following the leading "```" of a preformat toggle line which
-	#	toggles preformatted mode off MUST be ignored by clients.
-	# TODO: should alt txt after ``` include any whitespace between ``` and alnum string?
-	# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
 	my $inarray = $_[0];
 	my $outarray = $_[1];
 	my $linkarray = $_[2];
@@ -219,16 +186,14 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 	my $num_links = 0;
 	my $skipline = 0;
 	foreach (@$inarray) {
-		# TODO: ignore formatting if $t_preform
 		if ($_ =~ /^```/) {		# Preformat toggle marker
 			if (not $t_preform) {
 				$t_preform = 1;
-				# don't display
 				# TODO: handle alt text?
 			} else {
 				$t_preform = 0;
 			}
-			$skipline = 1;
+			$skipline = 1;		# don't display
 		} elsif (not $t_preform) {
 			if ($_ =~ /^###/) {			# Heading 3
 				$line = $_ =~ s/^###[[:blank:]]*//r;
@@ -251,11 +216,10 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 				$line = $link_descr;
 				$line = underscore $line;
 				$line = "[" . $num_links . "]\t" . $line;
-				# TODO: interface to link, e.g. number
-				#	Consider storing $num_links and $link_url in a hash
 			} elsif ($_ =~ /^\* /) {		# Unordered List Item
 				$line = $_ =~ s/^\* [[:blank:]]*(.*)/- $1/r;
 			} elsif ($_ =~ /^>/) {			# Quote
+				# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
 				$line = $_ =~ s/^>[[:blank:]]*(.*)/> $1/r;
 			} else {				# Text line
 				$line = $_ =~ s/^[[:blank:]]*//r;
@@ -281,8 +245,7 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 	}
 }
 
-# taken from sub sslcat in:
-# /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
+# see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
 # TODO: rewrite/simplify sslcat_custom
 sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
 	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
@@ -291,8 +254,7 @@ sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs
 	($got, $errs) = Net::SSLeay::open_proxy_tcp_connection($dest_serv, $port);
 	return (wantarray ? (undef, $errs) : undef) unless $got;
 
-	### Do SSL negotiation stuff
-
+	### SSL negotiation
 	$ctx = Net::SSLeay::new_x_ctx();
 	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_new') or !$ctx;
 	Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL);
@@ -313,11 +275,9 @@ sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs
 	Net::SSLeay::print_errs('get_peer_certificate');
 
 	### Connected. Exchange some data (doing repeated tries if necessary).
-
 	($written, $errs) = Net::SSLeay::ssl_write_all($ssl, $out_message);
 	goto cleanup unless $written;
-	sleep $Net::SSLeay::slowly if $Net::SSLeay::slowly;  # Closing too soon can abort broken servers
-	#($got, $errs) = Net::SSLeay::ssl_read_until($ssl, "EOF", 1024);
+	sleep $Net::SSLeay::slowly if $Net::SSLeay::slowly;  # Closing too soon can abort broken servers # TODO: remove?
 	($got, $errs) = Net::SSLeay::ssl_read_all($ssl);
 	CORE::shutdown Net::SSLeay::SSLCAT_S, 1;  # Half close --> No more output, send EOF to server
 cleanup:
@@ -326,7 +286,7 @@ cleanup:
 cleanup2:
 	Net::SSLeay::CTX_free ($ctx);
 	$errs .= Net::SSLeay::print_errs('CTX_free');
-	#close Net::SSLeay::SSLCAT_S;
+	close Net::SSLeay::SSLCAT_S;
 	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
