@@ -626,41 +626,31 @@ sub readconf {
 Net::SSLeay::initialize();	# initialize ssl library once
 
 # TODO: tighten pledge later
-# stdio promise is always implied by OpenBSD::Pledge
 # needed promises:
-#	sslcat:			rpath inet dns
-# 	IO::Pager::Perl:	tty	- NOT USING
-# 	URI (no support for 'gemini://':			prot_exec (for re engine)
-#	Term::Screen		proc
-#	Term::ReadKey - ReadMode 0	tty	- NOT USING
-#	IO::Stty::stty		tty
-#	system (for xdg-open)	exec
+#	sslcat:				rpath inet dns
+#	Term::Screen			proc
+#	Term::ReadKey - ReadMode 0	tty
+#	IO::Stty::stty			tty
+#	system (for xdg-open)		exec
 pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
 ## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
-# needed paths for sslcat: /etc/resolv.conf (r)
 # ### LEAVE OUT UNTIL USING ### unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
 unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
-unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
+unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat(r)
 # TODO: unveiling /bin/sh is problematic
 unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
-#unveil( "/bin/stty", "x") || die "Unable to unveil: $!";
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
-# TODO: unveiling xdg-open is problematic; it could do almost anything. Maybe rather use specialized
-#	programs based on the context per the user's config
-unveil( "/usr/local/bin/xdg-open", "x") || die "Unable to unveil: $!";
 unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 if (-f $porcelain_dir . '/open.conf') {
 	%open_with = readconf($porcelain_dir . '/open.conf');
 }
-# ### LEAVE OUT ### unveil( "/usr/bin/which", "x") || die "Unable to unveil: $!";
 for my $v (values %open_with) {
 	unveil( $v, "x") || die "Unable to unveil: $!";
 }
-# ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
 # process user input
