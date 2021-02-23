@@ -88,6 +88,7 @@ $text->columns($scr->cols);
 
 my $url;
 my @history;
+my %open_with;
 
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
 if (! -d $porcelain_dir) {
@@ -587,38 +588,56 @@ sub open_gmi {	# url
 	# - style quote lines
 }
 
-sub open_html {
-	system("xdg-open $_[0]");
-	# return to gemini url
-	$url = $history[-1];
-}
-
-sub open_gopher {
-	clean_exit "Not implemented.";
-}
-
-sub open_file {
-	clean_exit "Not implemented.";
-}
-
-sub open_mailto {
-	clean_exit "Not implemented.";
+sub open_custom {
+	if (defined $open_with{$_[0]}) {
+		system("$open_with{$_[0]} $_[1]");
+		$url = $history[-1];
+	} else {
+		clean_exit "Not implemented.";
+	}
 }
 
 sub open_url {
 	if (uri_class($_[0]) eq 'gemini') {
 		open_gmi $_[0];
 	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
-		open_html $_[0];
+		#open_html $_[0];
+		open_custom 'html', $_[0] ;
 	} elsif (uri_class($_[0]) eq 'gopher') {
-		open_gopher $_[0];
+		open_custom 'gopher', $_[0];
 	} elsif (uri_class($_[0]) eq 'file') {
-		open_file $_[0];
+		open_custom 'file', $_[0];
 	} elsif (uri_class($_[0]) eq 'mailto') {
-		open_mailto $_[0];
+		open_custom 'mailto', $_[0];
 	} else {
 		clean_exit "Protocol not supported.";
 	}
+}
+
+# readconf: read hashes from file and return hash
+sub readconf {
+	# parameters:   filename
+	my $file = $_[0];
+	my %retval;
+
+	open(my $in, $file) or die "Can't open $file: $!";
+	while (<$in>)
+	{
+		chomp;
+		if ($_ =~ /^\s*#/) {	# ignore comments
+			next;
+		}
+		my ($key, $value) = split /:/;
+		next unless defined $value;
+		$key =~ s/^\s+//;
+		$key =~ s/\s+$//;
+		$value =~ s/^\s+//;
+		$value =~ s/\s+$//;
+		$retval{$key} = $value;
+	}
+	close $in or die "$in: $!";
+
+	return %retval
 }
 
 # init
@@ -652,6 +671,13 @@ unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 #	programs based on the context per the user's config
 unveil( "/usr/local/bin/xdg-open", "x") || die "Unable to unveil: $!";
 unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
+if (-f $porcelain_dir . '/open.conf') {
+	%open_with = readconf($porcelain_dir . '/open.conf');
+}
+# ### LEAVE OUT ### unveil( "/usr/bin/which", "x") || die "Unable to unveil: $!";
+for my $v (values %open_with) {
+	unveil( $v, "x") || die "Unable to unveil: $!";
+}
 # ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
 unveil() || die "Unable to lock unveil: $!";
 
