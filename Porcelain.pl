@@ -648,7 +648,10 @@ Porcelain.pl [url]
 =head1 DESCRIPTION
 
 B<Porcelain> is a text-based browser for gemini pages. It uses
-OpenBSD's pledge and unveil technologies.
+OpenBSD's pledge and unveil technologies. The goal of Porcelain is to
+be a "spec-conservative" gemini browser, meaning no support for
+non-spec extension attempts (like favicons). Automatic opening or
+inline display of non-gemini/text content is opt-in.
 
 =head1 KEYS
 
