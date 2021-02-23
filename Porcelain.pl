@@ -588,13 +588,14 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 # Init: ssl, pledge, unveil
 Net::SSLeay::initialize();	# initialize ssl library once
 
-# TODO: tighten pledge later
+# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
 #	sslcat:				rpath inet dns
-#	Term::Screen			proc
+#	Term::Screen			proc	# -> NOT USED
 #	Term::ReadKey - ReadMode 0	tty
 #	IO::Stty::stty			tty
 #	system (for xdg-open)		exec
-pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
+#	Curses				tty
+pledge(qw ( exec tty cpath rpath wpath inet dns unveil ) ) || die "Unable to pledge: $!";
 ## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 # TODO: tighten unveil later
@@ -604,9 +605,9 @@ unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to 
 unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat(r)
 # TODO: unveiling /bin/sh is problematic
-unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
+### LEAVE OUT ###unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
-unveil( "/usr/local/libdata/perl5/site_perl/Curses", "rx") || die "Unable to unveil: $!";	# for Curses
+### LEAVE OUT ###unveil( "/usr/local/libdata/perl5/site_perl/Curses", "x") || die "Unable to unveil: $!";	# for Curses TODO: tighten more?
 unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 if (-f $porcelain_dir . '/open.conf') {
 	%open_with = readconf($porcelain_dir . '/open.conf');
