@@ -70,6 +70,9 @@ my $url;
 my @history;
 my %open_with;
 
+my $redirect_count = 0;
+my $redirect_max = 5;	# TODO: allow setting this in the config
+
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
 if (! -d $porcelain_dir) {
 	mkdir $porcelain_dir || die "Unable to create $porcelain_dir";
@@ -358,26 +361,17 @@ sub open_gmi {	# url
 	}
 	validate_cert($server_cert) && clean_exit "Error while checking server certificate";
 
-	#	- 4x:	TEMPORARY FAILURE
-	#		* <META>: additional information about the failure. Client should display this to the user.
-	#		* 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
-	#	- 5x:	PERMANENT FAILURE
-	#		* <META>: additional information, client to display this to the user
-	#		* 50: PERMANENT FAILURE, 51: NOT FOUND, 52: GONE, 53: PROXY REQUEST REFUSED, 59: BAD REQUEST
-	#	- 6x:	CLIENT CERTIFICATE REQUIRED
-	#		* <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
-	#		* 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
-	# TODO: <META>: UTF-8 encoded, max 1024 bytes
-
+	# TODO: enforce <META>: UTF-8 encoded, max 1024 bytes
 	my @response =	lines($raw_response);
 	my $header =	shift @response;
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 	my $status = substr $full_status, 0, 1;
-	my @render;	# render array
-	my @links;	# array containing links in the page
+	my @render;		# array of rendered lines
+	my @links;		# array containing links in the page
 	$url =~ s/[^[:print:]]//g;
-
-	# Process $status
+	if ($status != 3) {
+		$redirect_count = 0;	# reset the $redirect_count
+	}
 	if ($status == 1) {		# 1x: INPUT
 		# TODO: implement
 		# <META> is a prompt to display to the user
@@ -457,13 +451,12 @@ sub open_gmi {	# url
 				$scr->at($displayrows + 1, 0)->puts(":")->normal();
 				my $test = <STDIN>;
 			} elsif ( $c =~ /\d/ ) {
-				# supports up to 999 links in a page
 				if (scalar(@links) >= 10) {
 					# TODO: allow infinitely long digits by using do ... while? https://www.perlmonks.org/?node_id=282322
 					my $keypress = ReadKey(1);
 					if (defined $keypress && $keypress =~ /\d/) {	# ignore non-digit input
 						$c .= $keypress;
-						if (scalar(@links) >= 100) {
+						if (scalar(@links) >= 100) {	# supports up to 999 links in a page
 							undef $keypress;
 							my $keypress = ReadKey(1);
 							if (defined $keypress && $keypress =~ /\d/) {
@@ -475,7 +468,6 @@ sub open_gmi {	# url
 				unless ($c <= scalar(@links)) {
 					clean_exit "link number outside of range of current page: $c";
 				}
-				# open link with new URL request
 				$url = expand_url($url, $links[$c - 1]);
 				$scr->at($displayrows + 1, 0)->puts($url);
 				return;
@@ -484,23 +476,33 @@ sub open_gmi {	# url
 			if ($update_viewport == 1) {
 				$scr->clrscr();
 			}
-			#$scr->at($displayrows + 1, 0);
-			#$scr->clreol();
-			#$scr->puts("viewfrom: $viewfrom, viewto: $viewto, render_length: $render_length, update_viewport: $update_viewport");
 		}
 		$scr->at($scr->rows, 0);	# TODO: is this really needed?
 	} elsif ($status == 3) {	# 3x: REDIRECT
 		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 		chomp $url;
 		chomp $meta;
-		# TODO: limit redirects? or warn?
+		$redirect_count++;
+		if ($redirect_count > $redirect_max) {
+			die "ERROR: more than maximum number of $redirect_max redirects";
+		}
+		# TODO: allow option to ask before all redirects
 		$url = expand_url($url, $meta);
+		if (not $url =~ m{^gemini://}) {
+			die "ERROR: cross-protocol redirects not allowed";	# TODO: instead ask for confirmation?
+		}
 		return;
 	} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
+		# <META>: additional information about the failure. Client should display this to the user.
+		# 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
 		print "TEMPORARY FAILURE\n";
 	} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
+		# <META>: additional information, client to display this to the user
+		# 50: PERMANENT FAILURE, 51: NOT FOUND, 52: GONE, 53: PROXY REQUEST REFUSED, 59: BAD REQUEST
 		print "PERMANENT FAILURE\n";
 	} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
+		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
+		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
 		print "CLIENT CERTIFICATE REQUIRED\n";
 	} else {
 		die "Invalid status code in response";
