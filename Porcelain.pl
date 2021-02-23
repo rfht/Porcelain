@@ -35,6 +35,7 @@
 # - implement a way to handle image and audio file links, e.g. on gemini://chriswere.uk/trendytalk/
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
+# - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
 
 use strict;
 use warnings;
@@ -293,22 +294,16 @@ cleanup2:
 sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
 	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
-	# known host?
-	my $common_name = $x509->subject();
-	#my $common_name =~ s/^CN=//;	# may not need this
-	# TODO: does $common_name match the domain?
-	# has cert expired (or is it not yet valid)?
+	my $common_name = $x509->subject();	# TODO: does $common_name match the domain?
 	my $f = DateTime::Format::x509->new();
 	if (DateTime->today() < $f->parse_datetime($x509->notBefore())) {
-	        print "cert is older than notBefore date\n";
-	        return 1;
+	        return 1;	# cert is not yet valid
 	}
 	if (DateTime->today() > $f->parse_datetime($x509->notAfter())) {
-	        print "cert is past notAfter date\n";
-	        return 1;
+	        return 1;	# cert has expired
 	}
 	if (scalar(grep(/^$common_name/, @known_hosts)) > 0) {
-		# if known, does cert match?
+		# cert is known, does cert still match (TOFU)?
 		my $local_cert;
 		my $found_cert = 0;
 		my $cert_body = 0;
@@ -337,8 +332,7 @@ sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 			return 1;
 		}
 	} else {
-		# TOFU: add to known_hosts on first use
-		# Write the new entry to $hosts_file
+		# Host is not known. TOFU: add to $hosts_file
 		open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
 		$fh->say($common_name);
 		$fh->say($x509->notAfter());
@@ -355,28 +349,15 @@ sub open_gmi {	# url
 
 	# sslcat request
 	# TODO: avoid sslcat if viewing local file
-	#
-	# ALTERNATIVES TO sslcat:
-	# printf "gemini://perso.pw/blog/index.gmi\r\n" | openssl s_client -tls1_2 -ign_eof -connect perso.pw:1965
-	# printf "gemini://perso.pw/blog/index.gmi\r\n" | nc -T noverify -c perso.pw 1965
 	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n");	# has to end with CRLF ('\r\n')
-												# $err, $server_cert not usable IME
-	# validate server certificate via TOFU (trust on first use)
+	if ($err) {
+		die "error while trying to establish TLS connection";
+	}
+	if (not defined $server_cert) {
+		die "no certificate received from server";
+	}
 	validate_cert($server_cert) && clean_exit "Error while checking server certificate";
 
-	# gemini://gemini.circumlunar.space/docs/specification.gmi
-	# first line of reply is the header: '<STATUS> <META>' (ends with CRLF)
-	# <STATUS>: 2-digit numeric; only the first digit may be needed for the client
-	#	- 1x:	INPUT
-	#		* <META> is a prompt to display to the user
-	#		* after user input, request the same resource again with the user input as the query component
-	#		* query component is separated from the path by '?'. Reserved characters including spaces must be "percent-encoded"
-	#		* 11: SENSITIVE INPUT (e.g. password entry) - don't echo
-	#	- 2x:	SUCCESS
-	#		* <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
-	#	- 3x:	REDIRECT
-	#		* <META>: new URL
-	#		* 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 	#	- 4x:	TEMPORARY FAILURE
 	#		* <META>: additional information about the failure. Client should display this to the user.
 	#		* 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
@@ -386,10 +367,7 @@ sub open_gmi {	# url
 	#	- 6x:	CLIENT CERTIFICATE REQUIRED
 	#		* <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 	#		* 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
-	# <META>: UTF-8 encoded, max 1024 bytes
-
-	# TODO: process basic reply elements: header (status, meta), body (if applicable)
-	# TODO: process language, encoding
+	# TODO: <META>: UTF-8 encoded, max 1024 bytes
 
 	my @response =	lines($raw_response);
 	my $header =	shift @response;
@@ -401,10 +379,16 @@ sub open_gmi {	# url
 
 	# Process $status
 	if ($status == 1) {		# 1x: INPUT
+		# TODO: implement
+		# <META> is a prompt to display to the user
+		# after user input, request the same resource again with the user input as the query component
+		# query component is separated from the path by '?'. Reserved characters including spaces must be "percent-encoded"
+		# 11: SENSITIVE INPUT (e.g. password entry) - don't echo
 		print "INPUT\n";
 	} elsif ($status == 2) {	# 2x: SUCCESS
-		$scr->puts("SUCCESS\n");
-		gmirender \@response, \@render, \@links;	# TODO: add second, empty array, and fill that one up (will likely have different line number)
+		# <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
+		# TODO: process language, encoding
+		gmirender \@response, \@render, \@links;
 		$scr->noecho();
 		$scr->clrscr();
 		my $displayrows = $scr->rows - 2;
@@ -506,6 +490,7 @@ sub open_gmi {	# url
 		}
 		$scr->at($scr->rows, 0);	# TODO: is this really needed?
 	} elsif ($status == 3) {	# 3x: REDIRECT
+		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 		chomp $url;
 		chomp $meta;
 		# TODO: limit redirects? or warn?
