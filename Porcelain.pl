@@ -36,6 +36,7 @@
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
+# - if going back in history, don't add link to the end of history
 
 use strict;
 use warnings;
@@ -68,6 +69,7 @@ $text->columns($scr->cols);
 
 my $url;
 my @history;
+my $history_pointer = 0;
 my %open_with;
 
 my $redirect_count = 0;
@@ -213,6 +215,7 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 				$line = $scr->colored('yellow', $line);
 				$line = $text->center($line);
 			} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
+				# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
 				$num_links++;
 				$line = $_ =~ s/^=>[[:blank:]]+//r;
 				($link_url, $link_descr) = sep $line;
@@ -224,6 +227,7 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 				$line = $_ =~ s/^\* [[:blank:]]*(.*)/- $1/r;
 			} elsif ($_ =~ /^>/) {			# Quote
 				# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
+				# TODO: style quoted lines
 				$line = $_ =~ s/^>[[:blank:]]*(.*)/> $1/r;
 			} else {				# Text line
 				$line = $_ =~ s/^[[:blank:]]*//r;
@@ -346,8 +350,6 @@ sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 }
 
 sub open_gmi {	# url
-	push @history, $_[0];	# log to @history
-
 	my $domain = gem_host($_[0]);
 
 	# sslcat request
@@ -382,6 +384,14 @@ sub open_gmi {	# url
 	} elsif ($status == 2) {	# 2x: SUCCESS
 		# <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
 		# TODO: process language, encoding
+		if ($history[$history_pointer] ne $url) {	# $url and @history at pointer are not equal if we are NOT browsing back in history
+			if (scalar(@history) > $history_pointer + 1) {
+				splice @history, $history_pointer + 1;	# remove history after pointer in case we've gone back in history and this is a new site
+			}
+			push @history, $url;			# log to @history
+			$history_pointer = scalar(@history) - 1;
+		}
+
 		gmirender \@response, \@render, \@links;
 		$scr->noecho();
 		$scr->clrscr();
@@ -398,14 +408,9 @@ sub open_gmi {	# url
 				$scr->puts(join("\n", @render[$viewfrom..$viewto]));
 			}
 			$update_viewport = 0;
-
-			$scr->at($displayrows + 1, 0);
 			my $c = $scr->getch();
-			#$scr->at($displayrows + 1, 0)->puts("You pressed: " . $c);
-
 			if ($c eq 'h') {	# history
 				$scr->puts(join(' ', @history));
-				clean_exit;
 			} elsif ($c eq 'H') {	# home
 				$url = "gemini://gemini.circumlunar.space/";
 				return;
@@ -415,8 +420,11 @@ sub open_gmi {	# url
 				undef $url;
 				return;
 			} elsif ( $c =~ /\cH/ ) {	# Ctrl-H: back navigation (TODO: not sure how backspace can be used)
-				$url = $history[-2];
-				return;
+				if ($history_pointer > 0) {
+					$history_pointer--;
+					$url = $history[$history_pointer];
+					return;
+				}	# TODO: warn if trying to go back when at $history_pointer == 0?
 			} elsif ($c eq ' ' || $c eq 'pgdn') {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
@@ -447,7 +455,7 @@ sub open_gmi {	# url
 					$update_viewport = 1;
 					$viewfrom = $render_length - $displayrows - 1;
 				}
-			} elsif ($c eq ':') {
+			} elsif ($c eq ':') {	# TODO: NOT WORKING!
 				$scr->at($displayrows + 1, 0)->puts(":")->normal();
 				my $test = <STDIN>;
 			} elsif ( $c =~ /\d/ ) {
@@ -477,7 +485,6 @@ sub open_gmi {	# url
 				$scr->clrscr();
 			}
 		}
-		$scr->at($scr->rows, 0);	# TODO: is this really needed?
 	} elsif ($status == 3) {	# 3x: REDIRECT
 		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 		chomp $url;
@@ -486,41 +493,36 @@ sub open_gmi {	# url
 		if ($redirect_count > $redirect_max) {
 			die "ERROR: more than maximum number of $redirect_max redirects";
 		}
-		# TODO: allow option to ask before all redirects
+		# TODO: allow option to ask for confirmation before all redirects
 		$url = expand_url($url, $meta);
 		if (not $url =~ m{^gemini://}) {
 			die "ERROR: cross-protocol redirects not allowed";	# TODO: instead ask for confirmation?
 		}
 		return;
 	} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
+		# TODO: implement proper error message without dying
 		# <META>: additional information about the failure. Client should display this to the user.
 		# 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
 		print "TEMPORARY FAILURE\n";
 	} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
+		# TODO: implement proper error message without dying
 		# <META>: additional information, client to display this to the user
 		# 50: PERMANENT FAILURE, 51: NOT FOUND, 52: GONE, 53: PROXY REQUEST REFUSED, 59: BAD REQUEST
 		print "PERMANENT FAILURE\n";
 	} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
+		# TODO: implement
 		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
 		print "CLIENT CERTIFICATE REQUIRED\n";
 	} else {
 		die "Invalid status code in response";
 	}
-
-	# - optionally: autorecognize types of links, e.g. .png, .jpg, .mp4, .ogg, and offer to open (inline vs. dedicated program?)
-	# - compose relative links into whole links
-	# - style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
-	# - style headers 1-3
-	# - style bullet points
-	# - style preformatted mode
-	# - style quote lines
 }
 
 sub open_custom {
 	if (defined $open_with{$_[0]}) {
 		system("$open_with{$_[0]} $_[1]");
-		$url = $history[-1];
+		$url = $history[$history_pointer];
 	} else {
 		clean_exit "Not implemented.";
 	}
@@ -530,7 +532,6 @@ sub open_url {
 	if (uri_class($_[0]) eq 'gemini') {
 		open_gmi $_[0];
 	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
-		#open_html $_[0];
 		open_custom 'html', $_[0] ;
 	} elsif (uri_class($_[0]) eq 'gopher') {
 		open_custom 'gopher', $_[0];
@@ -543,12 +544,9 @@ sub open_url {
 	}
 }
 
-# readconf: read hashes from file and return hash
-sub readconf {
-	# parameters:   filename
+sub readconf {	# filename of file with keys and values separated by ':'--> hash of keys and values
 	my $file = $_[0];
 	my %retval;
-
 	open(my $in, $file) or die "Can't open $file: $!";
 	while (<$in>)
 	{
@@ -565,15 +563,13 @@ sub readconf {
 		$retval{$key} = $value;
 	}
 	close $in or die "$in: $!";
-
 	return %retval
 }
 
-# init
+# Init: ssl, pledge, unveil
 Net::SSLeay::initialize();	# initialize ssl library once
 
 # TODO: tighten pledge later
-# needed promises:
 #	sslcat:				rpath inet dns
 #	Term::Screen			proc
 #	Term::ReadKey - ReadMode 0	tty
@@ -601,6 +597,7 @@ for my $v (values %open_with) {
 unveil() || die "Unable to lock unveil: $!";
 
 # process user input
+# TODO: allow and process CLI flags
 if (scalar @ARGV == 0) {	# no URI passed
 	$url = "gemini://gemini.circumlunar.space/";
 } else {
