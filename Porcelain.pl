@@ -23,13 +23,14 @@
 #  - gemini://gus.guru/				-> fixed with sub sslcat_custom
 #  - gemini://perso.pw/blog/articles/limit.gmi	-> fixed with sub sslcat_custom
 #  - gemini://gemini.circumlunar.space/software/
+#  - gemini://drewdevault.com/			-> fixed with Server Name Indication
+#  - gemini://gmi.wikdict.com/
+#  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof
+#  - gemini://gemini.circumlunar.space/software/
+#  - gemini://chriswere.uk/gemserver.gmi
 #
 #  NOT WORKING:
-#  - gemini://playonbsd.com							-> returns "31 /"
-#  - gemini://gmi.wikdict.com/							-> just returns 0
-#  - gemini://translate.metalune.xyz/google/auto/en/das%20ist%20aber%20doof	-> returns "53 Proxy Requet Refused"
-#  - gemini://gemini.circumlunar.space/software/				-> header1 not displayed
-#  - gemini://chriswere.uk/gemserver.gmi					-> in half terminal window misses first few lines
+#  - gemini://playonbsd.com			-> returns "31 /"
 
 # TODO:
 # - look up pledge and unveil examples and best practices
@@ -45,6 +46,8 @@
 #	Example: gemini://hexdsl.co.uk/
 # - xdg-open or other config for using external programs (browser, mpv etc.) for protocol/content types
 # - limit size of history; can be configurable in whatever config approach is later chosen
+# - Links: if there is no link description, just display the link itself rather than an empty line
+# - remove problematic unveils, e.g. /bin/sh that could be used to do almost anything
 
 # DEPENDENCIES:
 # - xdg-utils for xdg-open
@@ -299,6 +302,10 @@ sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs
 	Net::SSLeay::set_cert_and_key($ctx, $crt_path, $key_path) if $crt_path;
 	$ssl = Net::SSLeay::new($ctx);
 	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_new') or !$ssl;
+
+	# set up SNI (Server Name Indication), see specification item 4
+	Net::SSLeay::set_tlsext_host_name($ssl, $dest_serv) || die "failed to set SSL host name for Server Name Indication";
+
 	Net::SSLeay::set_fd($ssl, fileno(Net::SSLeay::SSLCAT_S));
 	goto cleanup if $errs = Net::SSLeay::print_errs('set_fd');
 	$got = Net::SSLeay::connect($ssl);
@@ -472,7 +479,6 @@ sub open_gmi {	# url
 			$scr->at($displayrows + 1, 0);
 			my $c = $scr->getch();
 			#$scr->at($displayrows + 1, 0)->puts("You pressed: " . $c);
-			#clean_exit;
 
 			if ($c eq 'h') {	# history
 				$scr->puts(join(' ', @history));
@@ -518,6 +524,9 @@ sub open_gmi {	# url
 					$update_viewport = 1;
 					$viewfrom = $render_length - $displayrows - 1;
 				}
+			} elsif ($c eq ':') {
+				$scr->at($displayrows + 1, 0)->puts(":")->normal();
+				my $test = <STDIN>;
 			} elsif ( $c =~ /\d/ ) {
 				# supports up to 999 links in a page
 				if (scalar(@links) >= 10) {
@@ -635,9 +644,12 @@ unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r")
 unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
 unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
 unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";
+# TODO: unveiling /bin/sh is problematic
 unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
 #unveil( "/bin/stty", "x") || die "Unable to unveil: $!";
 unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
+# TODO: unveiling xdg-open is problematic; it could do almost anything. Maybe rather use specialized
+#	programs based on the context per the user's config
 unveil( "/usr/local/bin/xdg-open", "x") || die "Unable to unveil: $!";
 unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 # ### LEAVE OUT ### unveil( "/usr/local/libdata/perl5/site_perl/URI", "r") || die "Unable to unveil: $!";
