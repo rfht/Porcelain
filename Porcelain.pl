@@ -56,16 +56,17 @@ require Net::SSLeay;					# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Pod::Usage;
-#use Term::ReadKey;					# for use with IO::Pager::Perl
 use utf8;						# TODO: really needed?
 
 # Curses init
 initscr;
 start_color;	# TODO: check if (has_colors)
 my $win = newwin(0,0,0,0);
-scrollok(1);
 noecho;
+nonl;
+cbreak;
 keypad(1);
+curs_set(0);
 init_pair(1, COLOR_YELLOW, COLOR_BLACK);
 init_pair(2, COLOR_WHITE, COLOR_BLACK);
 
@@ -449,7 +450,7 @@ sub open_gmi {	# url
 			} elsif ($c eq 'q') {	# quit
 				undef $url;
 				return;
-			} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {	# Ctrl-H: back navigation (TODO: not sure how backspace can be used)
+			} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
 				if ($history_pointer > 0) {
 					$history_pointer--;
 					$url = $history[$history_pointer];
@@ -495,6 +496,7 @@ sub open_gmi {	# url
 				getch;
 				clean_exit;
 			} elsif ( $c =~ /\d/ ) {
+				addch($LINES - 1, 0, $c);
 =pod
 				if (scalar(@links) >= 10) {
 					# TODO: allow infinitely long digits by using do ... while? https://www.perlmonks.org/?node_id=282322
@@ -605,11 +607,9 @@ Net::SSLeay::initialize();	# initialize ssl library once
 if ($^O eq 'openbsd') {
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
 	#	sslcat_custom:			rpath inet dns
-	#	Term::Screen			proc	# -> NOT USED
-	#	Term::ReadKey - ReadMode 0	tty
-	#	system (for xdg-open)		exec
+	#	system (for external programs)	exec proc
 	#	Curses				tty
-	pledge(qw ( exec tty cpath rpath wpath inet dns unveil ) ) || die "Unable to pledge: $!";
+	pledge(qw ( exec tty cpath rpath wpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
 	## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 	# TODO: tighten unveil later
