@@ -56,13 +56,18 @@ require Net::SSLeay;					# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Pod::Usage;
-#use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
+#use Term::ReadKey;					# for use with IO::Pager::Perl
 use utf8;						# TODO: really needed?
 
+# Curses init
 initscr;
 start_color;	# TODO: check if (has_colors)
 my $win = newwin(0,0,0,0);
 scrollok(1);
+noecho;
+keypad(1);
+init_pair(1, COLOR_YELLOW, COLOR_BLACK);
+init_pair(2, COLOR_WHITE, COLOR_BLACK);
 
 my $url;
 my @history;
@@ -115,6 +120,17 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	} else {
 		return '';			# unsupported protocol
 	}
+}
+
+sub c_prompt {	# Curses prompt: prompt string --> user string
+	move($LINES, 0);	# move to last row
+	clrtoeol;			# clear the row
+	addstr($_[0]);
+	refresh($win);
+	echo;
+	my $s = getstring;
+	noecho;
+	return $s;
 }
 
 sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
@@ -188,8 +204,6 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray 
 	my $num_links = 0;
 	my $y;
 	my $x;
-	init_pair(1, COLOR_YELLOW, COLOR_BLACK);
-	init_pair(2, COLOR_WHITE, COLOR_BLACK);
 	clear;
 	move(0, 0);
 	while ($hpos <= $hstop) {
@@ -223,7 +237,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray 
 				attron(A_BOLD);
 				getyx($y, $x);
 				addstr($y, $x + 12, $line);
-				move($y + 2, 0);
+				move($y + 1, 0);
 			} elsif ($line =~ /^=>[[:blank:]]/) {	# Link
 				# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
 				$num_links++;
@@ -414,13 +428,17 @@ sub open_gmi {	# url
 		my $update_viewport = 1;
 		while (1) {
 			$viewto = min($viewfrom + $displayrows, $render_length - 1);
-			#if ($update_viewport == 1) {
-				#$scr->puts(join("\n", @render[$viewfrom..$viewto]));
-			#}
-			gmirender $viewfrom, $viewto, \@response, \@links;
-			refresh($win);
-			my $c = getch;
-			#$update_viewport = 0;
+			if ($update_viewport == 1) {
+				gmirender $viewfrom, $viewto, \@response, \@links;
+				refresh($win);
+			}
+			$update_viewport = 0;
+			my ($c, $fn) = getchar;		# $fn: a function key, like arrow keys etc
+			if (defined $fn) {	# do this dance so that $c and $fn are not undefined
+				$c = '';
+			} else {
+				$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
+			}
 			if ($c eq 'H') {	# history
 				#$scr->puts(join(' ', @history));
 			#} elsif ($c =~ /\aH/) {	# home
@@ -431,45 +449,51 @@ sub open_gmi {	# url
 			} elsif ($c eq 'q') {	# quit
 				undef $url;
 				return;
-			} elsif ( $c =~ /\cH/ ) {	# Ctrl-H: back navigation (TODO: not sure how backspace can be used)
+			} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {	# Ctrl-H: back navigation (TODO: not sure how backspace can be used)
 				if ($history_pointer > 0) {
 					$history_pointer--;
 					$url = $history[$history_pointer];
 					return;
 				}	# TODO: warn if trying to go back when at $history_pointer == 0?
-			} elsif ($c eq ' ') {
+			} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
 					$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
 				}
-			} elsif ($c eq 'b') {
+			} elsif ($c eq 'b' || $fn == KEY_PPAGE) {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom = max($viewfrom - $displayrows, 0);
 				}
-			} elsif ($c eq 'j') {
+			} elsif ($c eq 'j' || $fn == KEY_DOWN) {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
 					$viewfrom++;
 				}
-			} elsif ($c eq 'k') {
+			} elsif ($c eq 'k' || $fn == KEY_UP) {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom--;
 				}
-			} elsif ($c eq 'K') {
+			} elsif ($c eq 'K' || $fn == KEY_HOME) {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom = 0;
 				}
-			} elsif ($c eq 'J') {
+			} elsif ($c eq 'J' || $fn == KEY_END) {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
 					$viewfrom = $render_length - $displayrows - 1;
 				}
-			} elsif ($c eq ':') {	# TODO: NOT WORKING!
-				#$scr->at($displayrows + 1, 0)->puts(":")->normal();
-				#my $test = <STDIN>;
+			} elsif ($c eq 'o') {
+				$url = c_prompt("url: gemini://");	# TODO: allow relative links??
+				$url = 'gemini://' . $url;
+				return;
+			} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
+				my $s = c_prompt(": ");
+				addstr(0, 0, "You typed: " . $s);
+				getch;
+				clean_exit;
 			} elsif ( $c =~ /\d/ ) {
 =pod
 				if (scalar(@links) >= 10) {
@@ -492,10 +516,6 @@ sub open_gmi {	# url
 				}
 				$url = expand_url($url, $links[$c - 1]);
 				return;
-			}
-
-			if ($update_viewport == 1) {
-				#$scr->clrscr();
 			}
 		}
 	} elsif ($status == 3) {	# 3x: REDIRECT
