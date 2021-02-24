@@ -19,7 +19,7 @@
 # - keep testing with gemini://gemini.conman.org/test/torture/
 # - implement a working pager (IO::Pager::Perl not working)
 # - search "TODO" in comments
-# - import IO::Stty and others in mystuff/misc to ports
+# - import perl modules in mystuff/misc to ports
 # - check number of columns and warn if too few (< 80) ?
 # - intercept Ctrl-C and properly exit when it's pressed
 # - fix the header graphics incomplete on the right: gemini://hexdsl.co.uk/
@@ -37,6 +37,9 @@
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
 # - if going back in history, don't add link to the end of history
+# - add option for "Content Warning" type use of preformatted text and alt text:
+#	https://dragonscave.space/@devinprater/105782591455644854
+# - adjust output size when terminal is resized
 
 use strict;
 use warnings;
@@ -46,20 +49,17 @@ package Porcelain::Main;
 use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
-use DateTime::Format::x509;
+use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative. Also creates ...XS.so: undefined symbol 'PL_hash_state'
 #use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
-use IO::Stty;
-my $stty_restore = IO::Stty::stty(\*STDIN, '-g');
 use List::Util qw(min max);
 require Net::SSLeay;					# p5-Net-SSLeay
-Net::SSLeay->import(qw(sslcat));			# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Pod::Usage;
 use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
-use Term::ScreenColor;
-use Text::Format;					# p5-Text-Format
 use utf8;						# TODO: really needed?
+
+(my $wchar, my $hchar, my $wpixels, my $hpixels) = GetTerminalSize();
 
 initscr;
 start_color;	# TODO: check if (has_colors)
@@ -92,7 +92,6 @@ if (-e $hosts_file) {
 }
 
 sub clean_exit {
-	#IO::Stty::stty(\*STDIN, $stty_restore);
 	endwin;
 	# TODO: clear screen on exit? ($scr->clrscr())
 	#	Or just clear the last line at the bottom?
@@ -160,10 +159,12 @@ sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	return ($first, $rest);
 }
 
+# TODO: remove?
 sub bold {	# string --> string (but bold)
 	return "\033[1m".$_[0]."\033[0m";
 }
 
+# TODO: remove?
 sub underscore {	# string --> string (but underscored)
 	return "\033[4m".$_[0]."\033[0m";
 }
@@ -421,8 +422,6 @@ sub open_gmi {	# url
 			my $c = getch;
 			#$viewto = min($viewfrom + $displayrows, $render_length - 1);
 			#if ($update_viewport == 1) {
-				# TODO: set 'opost' outside of the loop?
-				#IO::Stty::stty(\*STDIN, 'opost');	# opost is turned off by Term::ScreenColor, but I need it
 				#$scr->puts(join("\n", @render[$viewfrom..$viewto]));
 			#}
 			#$update_viewport = 0;
@@ -589,10 +588,9 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 Net::SSLeay::initialize();	# initialize ssl library once
 
 # TODO: tighten pledge later, e.g. remove wpath rpath after config is read
-#	sslcat:				rpath inet dns
+#	sslcat_custom:			rpath inet dns
 #	Term::Screen			proc	# -> NOT USED
 #	Term::ReadKey - ReadMode 0	tty
-#	IO::Stty::stty			tty
 #	system (for xdg-open)		exec
 #	Curses				tty
 pledge(qw ( exec tty cpath rpath wpath inet dns unveil ) ) || die "Unable to pledge: $!";
@@ -650,8 +648,8 @@ Porcelain.pl [url]
 B<Porcelain> is a text-based browser for gemini pages. It uses
 OpenBSD's pledge and unveil technologies. The goal of Porcelain is to
 be a "spec-conservative" gemini browser, meaning no support for
-non-spec extension attempts (like favicons). Automatic opening or
-inline display of non-gemini/text content is opt-in.
+non-spec extension attempts (like favicons, metadata). Automatic opening
+or inline display of non-gemini/text content is opt-in.
 
 =head1 KEYS
 
