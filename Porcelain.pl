@@ -22,15 +22,12 @@
 # - check number of terminal columns and warn if too few (< 80) ?
 # - intercept Ctrl-C and properly exit when it's pressed
 # - limit size of history; can be configurable in whatever config approach is later chosen
-# - remove problematic unveils, e.g. /bin/sh that could be used to do almost anything
 # - implement a hotkey to view history
 # - implement subscribed option
-# - mandate 1 and only 1 empty line after all headers?
-# - implement a way to handle image and audio file links, e.g. on gemini://chriswere.uk/trendytalk/
+# - display 1 and only 1 empty line after all headers?
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
-# - if going back in history, don't add link to the end of history
 # - add option for "Content Warning" type use of preformatted text and alt text:
 #	https://dragonscave.space/@devinprater/105782591455644854
 # - adjust output size when terminal is resized
@@ -46,14 +43,13 @@ use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
 use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
-#use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
 use List::Util qw(min max);
-require Net::SSLeay;					# p5-Net-SSLeay
-use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
-use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
+require Net::SSLeay;
+use OpenBSD::Pledge;
+use OpenBSD::Unveil;
 use Pod::Usage;
-use Any::URI::Escape;					# to handle percent encoding (uri_escape())
-use utf8;						# TODO: really needed?
+use Any::URI::Escape;		# to handle percent encoding (uri_escape())
+use utf8;			# TODO: really needed?
 
 # Curses init
 initscr;
@@ -820,21 +816,15 @@ if ($^O eq 'openbsd') {
 	#	sslcat_custom:			rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
-	#
 	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
 	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
-	## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 	# TODO: tighten unveil later
 	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";
 	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
-	unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
 	unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
 	unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat(r)
-	# TODO: unveiling /bin/sh is problematic
-	### LEAVE OUT ###unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
 	unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
-	### LEAVE OUT ###unveil( "/usr/local/libdata/perl5/site_perl/Curses", "x") || die "Unable to unveil: $!";	# for Curses TODO: tighten more?
 	unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 	if (-f $porcelain_dir . '/open.conf') {
 		%open_with = readconf($porcelain_dir . '/open.conf');
