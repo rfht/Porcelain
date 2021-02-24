@@ -174,13 +174,12 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 	return wantarray ? @lines : $lines[0];
 }
 
-sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => formatted text (to outarray), linkarray
-	# note: this will manipulate the passed array, rather than return a new one
-	# call with "gmirender \@array \@outarray \@linkarray"
-	my $inarray = $_[0];
-	my $outarray = $_[1];
-	my $linkarray = $_[2];
-	undef @$outarray;	# empty outarray
+sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray => formatted text (to outarray), linkarray
+	# call with "gmirender $viewfrom, $viewto, \@array, \@linkarray"
+	my $hpos = $_[0];
+	my $hstop = $_[1];
+	my $inarray = $_[2];
+	my $linkarray = $_[3];
 	undef @$linkarray;	# empty linkarray
 	my $t_preform = 0;	# toggle for preformatted text
 	my $t_list = 0;		# toggle unordered list - TODO
@@ -189,69 +188,71 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 	my $link_url;
 	my $link_descr;
 	my $num_links = 0;
-	my $skipline = 0;
 	my $y;
 	my $x;
 	init_pair(1, COLOR_YELLOW, COLOR_BLACK);
 	init_pair(2, COLOR_WHITE, COLOR_BLACK);
-	foreach (@$inarray) {
-		if ($_ =~ /^```/) {		# Preformat toggle marker
+	while ($hpos <= $hstop) {
+		$line = ${$inarray}[$hpos++];
+		if ($line =~ /^```/) {		# Preformat toggle marker
 			if (not $t_preform) {
 				$t_preform = 1;
 				# TODO: handle alt text?
 			} else {
 				$t_preform = 0;
 			}
-			$skipline = 1;		# don't display
 		} elsif (not $t_preform) {
-			if ($_ =~ /^###/) {			# Heading 3
-				$line = $_ =~ s/^###[[:blank:]]*//r;
+			if ($line =~ /^###/) {			# Heading 3
+				$line =~ s/^###[[:blank:]]*//;
 				attrset(COLOR_PAIR(2));
+				attron(A_BOLD);
 				getyx($y, $x);
 				addstr($y, $x, $line);
 				move($y + 1, 0);
-			} elsif ($_ =~ /^##/) {			# Heading 2
-				$line = $_ =~ s/^##[[:blank:]]*//r;
+			} elsif ($line =~ /^##/) {			# Heading 2
+				$line =~ s/^##[[:blank:]]*//;
 				attrset(COLOR_PAIR(2));
+				attron(A_BOLD);
+				attron(A_UNDERLINE);
 				getyx($y, $x);
 				addstr($y, $x, $line);
 				move($y + 1, 0);
-			} elsif ($_ =~ /^#/) {			# Heading 1
-				$line = $_ =~ s/^#[[:blank:]]*//r;
+			} elsif ($line =~ /^#/) {			# Heading 1
+				$line =~ s/^#[[:blank:]]*//;
 				attrset(COLOR_PAIR(1));
 				attron(A_BOLD);
 				getyx($y, $x);
 				addstr($y, $x + 12, $line);
 				move($y + 2, 0);
-			} elsif ($_ =~ /^=>[[:blank:]]/) {	# Link
+			} elsif ($line =~ /^=>[[:blank:]]/) {	# Link
 				# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
 				$num_links++;
-				$line = $_ =~ s/^=>[[:blank:]]+//r;
+				$line =~ s/^=>[[:blank:]]+//;
 				($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
-				$line = $link_descr;
+				$line = $link_descr;	# TODO: if $link_descr is empty, use $link_url
 				#$line = underscore $line;
 				$line = "[" . $num_links . "]\t" . $line;
 				attrset(COLOR_PAIR(2));
 				attroff(A_BOLD);
+				attroff(A_UNDERLINE);
 				getyx($y, $x);
 				addstr($y, $x, $line);
 				move($y + 1, 0);
-			} elsif ($_ =~ /^\* /) {		# Unordered List Item
-				$line = $_ =~ s/^\* [[:blank:]]*(.*)/- $1/r;
-			} elsif ($_ =~ /^>/) {			# Quote
+			} elsif ($line =~ /^\* /) {		# Unordered List Item
+				$line =~ s/^\* [[:blank:]]*(.*)/- $1/;
+			} elsif ($line =~ /^>/) {			# Quote
 				# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
 				# TODO: style quoted lines
-				$line = $_ =~ s/^>[[:blank:]]*(.*)/> $1/r;
+				$line =~ s/^>[[:blank:]]*(.*)/> $1/;
 			} else {				# Text line
-				$line = $_ =~ s/^[[:blank:]]*//r;
+				$line =~ s/^[[:blank:]]*//;
 				# TODO: collapse multiple whitespace characters into one space?
 				#my $splitpos;
 				#undef $splitpos;
 				#while (length($line) > $scr->cols) {
 					#$splitpos = rindex($line, ' ', $scr->cols - 1);
 					#substr($line, $splitpos, 1) = '|';
-					#push @$outarray, substr($line, 0, $splitpos);
 					#$line = substr($line, $splitpos + 1);
 				#}
 				attrset(COLOR_PAIR(2));
@@ -264,10 +265,6 @@ sub gmirender {	# text/gemini (as array of lines!), outarray, linkarray => forma
 			#$line = $line . (" " x ($scr->cols - length($line)));
 			#$line = $scr->colored('black on cyan', $line);
 		}
-		if ($skipline == 0) {
-			#push @$outarray, $line;
-		}
-		$skipline = 0;
 	}
 }
 
@@ -410,23 +407,20 @@ sub open_gmi {	# url
 			$history_pointer = scalar(@history) - 1;
 		}
 
-		#my $displayrows = $scr->rows - 2;
-		my $displayrows = 30;
+		my $displayrows = $hchar - 2;
 		my $viewfrom = 0;	# top line to be shown
 		my $viewto;
-		my $render_length = scalar(@render);
+		my $render_length = scalar(@response);
 		my $update_viewport = 1;
 		while (1) {
-			gmirender \@response, \@render, \@links;
-			refresh($win);
-			my $c = getch;
-			#$viewto = min($viewfrom + $displayrows, $render_length - 1);
+			$viewto = min($viewfrom + $displayrows, $render_length - 1);
 			#if ($update_viewport == 1) {
 				#$scr->puts(join("\n", @render[$viewfrom..$viewto]));
 			#}
+			gmirender $viewfrom, $viewto, \@response, \@links;
+			refresh($win);
+			my $c = getch;
 			#$update_viewport = 0;
-			#my $c = $scr->getch();
-			#my $c = ReadKey;
 			if ($c eq 'h') {	# history
 				#$scr->puts(join(' ', @history));
 			} elsif ($c eq 'H') {	# home
