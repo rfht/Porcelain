@@ -500,7 +500,17 @@ sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 	}
 }
 
-sub open_gmi {	# url
+sub downloader {	# $body --> 0: success, >0: failure
+	my $dl_file = $url =~ s|^.*/||r;
+	$dl_file = $ENV{'HOME'} . "/Downloads/" . $dl_file;
+	c_prompt_ch "Downloading $url ...";
+	open my $fh, '>:raw', $dl_file or clean_exit "error opening $dl_file for writing";
+	print $fh $_[0] or clean_exit "error writing to file $dl_file";
+	close $fh;
+	return 0;
+}
+
+sub open_gemini {	# url
 	my $domain = gem_host($_[0]);
 
 	# sslcat request
@@ -535,6 +545,24 @@ sub open_gmi {	# url
 	} elsif ($status == 2) {	# 2x: SUCCESS
 		# <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
 		# TODO: process language, encoding
+
+		# is content text/gemini or something else?
+		chomp $meta;
+		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
+			my $r = '';
+			until ($r =~ /[YyNn]/) {
+				$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
+			}
+			if ($r eq 'y') {
+				downloader(join("\n", @response)) && c_warn "Download of $url failed!";
+			}
+			if ($history_pointer > 0) {
+				$history_pointer--;
+				$url = $history[$history_pointer];
+				return;
+			}	# TODO: warn if trying to go back when at $history_pointer == 0?
+		}
+
 		if ($history[$history_pointer] ne $url) {	# $url and @history at pointer are not equal if we are NOT browsing back in history
 			if (scalar(@history) > $history_pointer + 1) {
 				splice @history, $history_pointer + 1;	# remove history after pointer in case we've gone back in history and this is a new site
@@ -686,7 +714,7 @@ sub open_custom {
 
 sub open_url {
 	if (uri_class($_[0]) eq 'gemini') {
-		open_gmi $_[0];
+		open_gemini $_[0];
 	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
 		open_custom 'html', $_[0] ;
 	} elsif (uri_class($_[0]) eq 'gopher') {
@@ -736,7 +764,7 @@ if ($^O eq 'openbsd') {
 	## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 	# TODO: tighten unveil later
-	# ### LEAVE OUT UNTIL USING ### unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
+	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";
 	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 	unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
 	unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
