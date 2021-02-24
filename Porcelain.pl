@@ -123,7 +123,7 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	}
 }
 
-sub c_prompt {	# Curses prompt: prompt string --> user string
+sub c_prompt_str {	# Curses prompt: prompt string --> user string
 	my $prompt_win = newwin(0,0,$LINES - 1, 0);
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
@@ -421,7 +421,7 @@ sub open_gmi {	# url
 			$history_pointer = scalar(@history) - 1;
 		}
 
-		my $displayrows = $LINES - 2;
+		my $displayrows = $LINES - 1;
 		my $viewfrom = 0;	# top line to be shown
 		my $viewto;
 		my $render_length = scalar(@response);
@@ -486,11 +486,11 @@ sub open_gmi {	# url
 					$viewfrom = $render_length - $displayrows - 1;
 				}
 			} elsif ($c eq 'o') {
-				$url = c_prompt("url: gemini://");	# TODO: allow relative links??
+				$url = c_prompt_str("url: gemini://");	# TODO: allow relative links??
 				$url = 'gemini://' . $url;
 				return;
 			} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
-				my $s = c_prompt(": ");
+				my $s = c_prompt_str(": ");
 				addstr(0, 0, "You typed: " . $s);
 				getch;
 				clean_exit;
