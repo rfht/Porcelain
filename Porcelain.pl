@@ -549,15 +549,22 @@ sub open_gemini {	# url
 		# is content text/gemini or something else?
 		chomp $meta;
 		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
-			my $r = '';
-			until ($r =~ /[YyNn]/) {
-				$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
-			}
-			if ($r eq 'y') {
-				downloader(join("\n", @response)) && c_warn "Download of $url failed!";
+			# check if extension in %open_with
+			my $f_ext = $url =~ s/.*\././r;
+			if (defined $open_with{$f_ext}) {
+				open(my $fh, '|-', "$open_with{$f_ext}") or c_warn "Error opening pipe to ogg123: $!";
+				print $fh join("\n", @response) or clean_exit "error writing to pipe";
+				close $fh;
+			} else {
+				my $r = '';
+				until ($r =~ /[YyNn]/) {
+					$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
+				}
+				if ($r eq 'y') {
+					downloader(join("\n", @response)) && c_warn "Download of $url failed!";
+				}
 			}
 			if ($history_pointer > 0) {
-				$history_pointer--;
 				$url = $history[$history_pointer];
 				return;
 			}	# TODO: warn if trying to go back when at $history_pointer == 0?
@@ -778,7 +785,9 @@ if ($^O eq 'openbsd') {
 		%open_with = readconf($porcelain_dir . '/open.conf');
 	}
 	for my $v (values %open_with) {
-		unveil( $v, "x") || die "Unable to unveil: $!";
+		# TODO: implement paths with whitespace, eg. in quotes? like: "/home/user/these programs/launch"
+		my $unveil_bin = $v =~ s/\s.*$//r;	# this way parameters to the programs will not mess up the call.
+		unveil( $unveil_bin, "x") || die "Unable to unveil: $!";
 	}
 	unveil() || die "Unable to lock unveil: $!";
 }
