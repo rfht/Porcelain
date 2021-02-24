@@ -67,11 +67,14 @@ init_pair(1, COLOR_YELLOW, COLOR_BLACK);
 init_pair(2, COLOR_WHITE, COLOR_BLACK);
 init_pair(3, COLOR_BLUE, COLOR_BLACK);
 init_pair(4, COLOR_GREEN, COLOR_BLACK);
+init_pair(5, COLOR_CYAN, COLOR_BLACK);
+init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
 
 my $url;
 my @history;
 my $history_pointer = 0;
 my %open_with;
+my @links;		# array containing links in the pages
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
@@ -353,8 +356,19 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			# TODO: links should NOT be wrapped!!!
 			$line = substr $line, 2;
 			my @line_split = split(" ", $line);
-			my $link_index = shift @line_split; 
-			attrset(COLOR_PAIR(2));
+			my $link_index = shift @line_split;
+			my $li_num = $link_index;
+			$li_num =~ tr/\[\]//d;
+			$li_num = int($li_num - 1);	# zero based
+			if (uri_class($links[$li_num]) eq 'gemini' || uri_class($links[$li_num]) eq 'relative') {
+				attrset(COLOR_PAIR(5));	# cyan on black
+			} elsif (uri_class($links[$li_num]) eq 'gopher') {
+				attrset(COLOR_PAIR(6));	# magenta on black
+			} elsif (substr(uri_class($links[$li_num]), 0, 4) eq 'http') {
+				attrset(COLOR_PAIR(1));	# yellow on black
+			} else {	# not sure what this is linking to
+				attrset(COLOR_PAIR(2));
+			}
 			attroff(A_BOLD);
 			getyx($y, $x);
 			addstr($y, $x, $link_index . " ");
@@ -506,7 +520,7 @@ sub open_gmi {	# url
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 	my $status = substr $full_status, 0, 1;
 	my @formatted;		# array of rendered lines
-	my @links;		# array containing links in the page
+	undef @links;
 	$url =~ s/[^[:print:]]//g;
 	if ($status != 3) {
 		$redirect_count = 0;	# reset the $redirect_count
