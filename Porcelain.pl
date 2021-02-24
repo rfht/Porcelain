@@ -33,6 +33,7 @@
 # - adjust output size when terminal is resized
 # - implement logging messages, warnings, errors to file
 # - center preformatted text? at least if marked as ascii art?
+# - add mouse support?!
 
 use strict;
 use warnings;
@@ -96,8 +97,6 @@ if (-e $hosts_file) {
 
 sub clean_exit {
 	endwin;
-	# TODO: clear screen on exit? ($scr->clrscr())
-	#	Or just clear the last line at the bottom?
 	if ($_[0]) {
 		print $_[0] . "\n";
 	}
@@ -109,7 +108,7 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;
 	} elsif ($_[0] =~ m{^mailto:}) {
 		return 'mailto';
-	} elsif ($_[0] =~ m{://}) {		# unsupported protocol
+	} elsif ($_[0] =~ m{://}) {		# '' ==  unsupported protocol
 		return '';
 	} elsif ($_[0] =~ m{^/}) {
 		return 'relative';
@@ -118,7 +117,7 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	} elsif ($_[0] =~ m{^\.}) {
 		return 'relative';
 	} else {
-		return '';			# unsupported protocol
+		return '';			# '' == unsupported protocol
 	}
 }
 
@@ -183,7 +182,6 @@ sub center_text {	# string --> string with leading space to position in center o
 }
 
 sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
-			# no change if $newurl is already absolute
 	my $cururl = $_[0];
 	my $newurl = $_[1];
 	if (uri_class($newurl) eq 'relative') {
@@ -204,7 +202,7 @@ sub expand_url {	# current URL, new (potentially relative) URL -> new absolute U
 			$newurl = $curdir . $newurl;
 		}
 	}
-	return $newurl;
+	return $newurl;		# no change if $newurl is already absolute
 }
 
 sub gem_host {
@@ -216,7 +214,6 @@ sub gem_host {
 
 sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	# TODO: is leading whitespace allowed in the spec at all?
-	# Note this function applies to both text/gemini (links, headers, unordered list, quote)
 	my $first =	$_[0] =~ s/[[:blank:]].*$//r;
 	my $rest =	$_[0] =~ s/^[^[:blank:]]*[[:blank:]]*//r;
 	return ($first, $rest);
@@ -246,12 +243,13 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 			$t_preform = not $t_preform;
 			next;
 		}
-		if ($t_preform) {	# preformatted text. Don't format.
+		if ($t_preform) {	# preformatted text. Don't mess it up.
 			$line = "```" . $_;	# TODO: Truncate to $COLS? This breaks hexdsl.co.uk ASCII art. use e.g. pad to allow lateral scrolling?
 		} else {
 			# TODO: transform tabs into single space?
 			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?
 			# TODO: add blank line after all headers and changes in content type
+			# TODO: find multiple serial empty lines and transform into just one?
 			$line = $_ =~ s/\s*$//r;	# bye bye trailing whitespace TODO: apply to all lines incl preformatted?
 			if ($line =~ /^###\s*[^\s]/) {		# Heading 3	# are there any characters to print at all?
 				$line =~ s/^###\s*//;
@@ -287,13 +285,12 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 				} else {
 					$line = $link_descr;
 				}
-				$line = "=>[" . $num_links . "] " . $line;	# No length check. Should NOT be wrapped.
+				$line = "=>[" . $num_links . "] " . $line;	# No length check. Should NOT wrap.
 			} elsif ($line =~ /^\* /) {		# Unordered List
 				$line =~ s/^\*\s+/* /;
 				while (length($line) > $COLS) {
 					$splitpos = rindex($line, ' ', $COLS - 1);
 					push @$outarray, substr($line, 0, $splitpos);
-					# TODO: ensure no whitespace after '**'
 					$line = "**" . substr($line, $splitpos + 1);	# '**' is the marker for continuation of same unordered list item. TODO: is there a better one to avoid conflicts with other text?
 				}
 			} elsif ($line =~ /^>/) {		# Quote
@@ -330,7 +327,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 	while ($hpos <= $hstop) {
 		$line = ${$inarray}[$hpos++];
 		if ($t_list && not $line =~ /^\*\*/) {
-			$t_list = not $t_list;		# unordered list has not been continued. Reset the toggle.
+			$t_list = not $t_list;			# unordered list has not been continued. Reset the toggle.
 		}
 		if ($line =~ /^```/) {				# Preformatted
 			# TODO: handle alt text?
@@ -363,7 +360,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			addstr($y, $x, $line);
 			move($y + 1, 0);
 		} elsif ($line =~ /^=>/) {			# Link
-			# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
+			# TODO: style links according to same domain vs. other gemini domains
 			# TODO: links should NOT be wrapped!!!
 			$line = substr $line, 2;
 			my @line_split = split(" ", $line);
@@ -416,7 +413,6 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 }
 
 # see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
-# TODO: rewrite/simplify sslcat_custom
 sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
 	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
 	my ($ctx, $ssl, $got, $errs, $written);
@@ -869,7 +865,7 @@ Porcelain.pl [url]
 
 B<Porcelain> is a text-based browser for gemini pages. It uses
 OpenBSD's pledge and unveil technologies. The goal of Porcelain is to
-be a "spec-conservative" gemini browser, meaning no support for
+be a "spec-preserving" gemini browser, meaning no support for
 non-spec extension attempts (like favicons, metadata). Automatic opening
 or inline display of non-gemini/text content is opt-in.
 
