@@ -56,10 +56,8 @@ require Net::SSLeay;					# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Pod::Usage;
-use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
+#use Term::ReadKey;					# for use with IO::Pager::Perl; 'ReadMode 0;' resets tty, but not reliably
 use utf8;						# TODO: really needed?
-
-(my $wchar, my $hchar, my $wpixels, my $hpixels) = GetTerminalSize();
 
 initscr;
 start_color;	# TODO: check if (has_colors)
@@ -192,6 +190,8 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray 
 	my $x;
 	init_pair(1, COLOR_YELLOW, COLOR_BLACK);
 	init_pair(2, COLOR_WHITE, COLOR_BLACK);
+	clear;
+	move(0, 0);
 	while ($hpos <= $hstop) {
 		$line = ${$inarray}[$hpos++];
 		if ($line =~ /^```/) {		# Preformat toggle marker
@@ -407,7 +407,7 @@ sub open_gmi {	# url
 			$history_pointer = scalar(@history) - 1;
 		}
 
-		my $displayrows = $hchar - 2;
+		my $displayrows = $LINES - 2;
 		my $viewfrom = 0;	# top line to be shown
 		my $viewto;
 		my $render_length = scalar(@response);
@@ -421,11 +421,11 @@ sub open_gmi {	# url
 			refresh($win);
 			my $c = getch;
 			#$update_viewport = 0;
-			if ($c eq 'h') {	# history
+			if ($c eq 'H') {	# history
 				#$scr->puts(join(' ', @history));
-			} elsif ($c eq 'H') {	# home
-				$url = "gemini://gemini.circumlunar.space/";
-				return;
+			#} elsif ($c =~ /\aH/) {	# home
+				#$url = "gemini://gemini.circumlunar.space/";
+				#return;
 			} elsif ($c eq 'I') {	# info
 				#$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@history));
 			} elsif ($c eq 'q') {	# quit
@@ -437,59 +437,60 @@ sub open_gmi {	# url
 					$url = $history[$history_pointer];
 					return;
 				}	# TODO: warn if trying to go back when at $history_pointer == 0?
-			} elsif ($c eq ' ' || $c eq 'pgdn') {
+			} elsif ($c eq ' ') {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
 					$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
 				}
-			} elsif ($c eq 'b' || $c eq 'pgup') {
+			} elsif ($c eq 'b') {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom = max($viewfrom - $displayrows, 0);
 				}
-			} elsif ($c eq 'kd') {
+			} elsif ($c eq 'j') {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
 					$viewfrom++;
 				}
-			} elsif ($c eq 'ku') {
+			} elsif ($c eq 'k') {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom--;
 				}
-			} elsif ($c eq 'home') {
+			} elsif ($c eq 'K') {
 				if ($viewfrom > 0) {
 					$update_viewport = 1;
 					$viewfrom = 0;
 				}
-			} elsif ($c eq 'end') {
+			} elsif ($c eq 'J') {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
 					$viewfrom = $render_length - $displayrows - 1;
 				}
 			} elsif ($c eq ':') {	# TODO: NOT WORKING!
 				#$scr->at($displayrows + 1, 0)->puts(":")->normal();
-				my $test = <STDIN>;
+				#my $test = <STDIN>;
 			} elsif ( $c =~ /\d/ ) {
+=pod
 				if (scalar(@links) >= 10) {
 					# TODO: allow infinitely long digits by using do ... while? https://www.perlmonks.org/?node_id=282322
-					my $keypress = ReadKey(1);
+					my $keypress = getch;
 					if (defined $keypress && $keypress =~ /\d/) {	# ignore non-digit input
 						$c .= $keypress;
 						if (scalar(@links) >= 100) {	# supports up to 999 links in a page
 							undef $keypress;
-							my $keypress = ReadKey(1);
+							my $keypress = getch;
 							if (defined $keypress && $keypress =~ /\d/) {
 								$c .= $keypress;
 							}
 						}
 					}
 				}
+=cut
 				unless ($c <= scalar(@links)) {
 					clean_exit "link number outside of range of current page: $c";
 				}
 				$url = expand_url($url, $links[$c - 1]);
-				#$scr->at($displayrows + 1, 0)->puts($url);
 				return;
 			}
 
