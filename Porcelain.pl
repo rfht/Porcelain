@@ -123,14 +123,43 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	}
 }
 
-sub c_prompt_str {	# Curses prompt: prompt string --> user string
+sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
 	my $prompt_win = newwin(0,0,$LINES - 1, 0);
+	bkgd($prompt_win, COLOR_PAIR(2) | A_REVERSE);
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
 	echo;
+	curs_set(1);
 	my $s = getstring($prompt_win);
 	noecho;
+	curs_set(0);
 	return $s;
+}
+
+sub c_prompt_ch {	# Curses prompt for char: prompt char --> user char
+	my $prompt_win = newwin(0,0,$LINES - 1, 0);
+	bkgd($prompt_win, COLOR_PAIR(2) | A_REVERSE);
+	addstr($prompt_win, $_[0]);
+	refresh($prompt_win);
+	echo;
+	curs_set(1);
+	my $c = getchar($prompt_win);
+	noecho;
+	curs_set(0);
+	return $c;
+}
+
+sub c_warn {	# Curses warning: prompt char, can be any key --> user char
+	my $prompt_win = newwin(0,0,$LINES - 1, 0);
+	bkgd($prompt_win, COLOR_PAIR(1) | A_REVERSE);
+	addstr($prompt_win, $_[0]);
+	refresh($prompt_win);
+	echo;
+	curs_set(1);
+	my $c = getchar($prompt_win);
+	noecho;
+	curs_set(0);
+	return $c;
 }
 
 sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
@@ -244,14 +273,19 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray 
 				$line =~ s/^=>[[:blank:]]+//;
 				($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
-				$line = $link_descr;	# TODO: if $link_descr is empty, use $link_url
-				#$line = underscore $line;
-				$line = "[" . $num_links . "]\t" . $line;
+				if ($link_descr =~ /^\s*$/) {	# if $link_descr is empty, use $link_url
+					$line = $link_url;
+				} else {
+					$line = $link_descr;
+				}
 				attrset(COLOR_PAIR(2));
 				attroff(A_BOLD);
-				attroff(A_UNDERLINE);
+				getyx($y, $x);
+				addstr($y, $x, "[" . $num_links . "] ");
+				attron(A_UNDERLINE);
 				getyx($y, $x);
 				addstr($y, $x, $line);
+				attroff(A_UNDERLINE);
 				move($y + 1, 0);
 			} elsif ($line =~ /^\* /) {		# Unordered List Item
 				$line =~ s/^\* [[:blank:]]*(.*)/- $1/;
