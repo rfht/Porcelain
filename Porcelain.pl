@@ -17,20 +17,14 @@
 # TODO:
 # - look up pledge and unveil examples and best practices
 # - keep testing with gemini://gemini.conman.org/test/torture/
-# - implement a working pager (IO::Pager::Perl not working)
 # - search "TODO" in comments
 # - import perl modules in mystuff/misc to ports
-# - check number of columns and warn if too few (< 80) ?
+# - check number of terminal columns and warn if too few (< 80) ?
 # - intercept Ctrl-C and properly exit when it's pressed
-# - fix the header graphics incomplete on the right: gemini://hexdsl.co.uk/
 # - limit size of history; can be configurable in whatever config approach is later chosen
-# - Links: if there is no link description, just display the link itself rather than an empty line
 # - remove problematic unveils, e.g. /bin/sh that could be used to do almost anything
-# - fix the use of duplicate '/' when opening links, e.g. when browsing through gemini://playonbsd.com
-# - switch from Term::Screen to Curses
-# - implement a video to view history
+# - implement a hotkey to view history
 # - implement subscribed option
-# - fix 2 empty lines after level 1 header
 # - mandate 1 and only 1 empty line after all headers?
 # - implement a way to handle image and audio file links, e.g. on gemini://chriswere.uk/trendytalk/
 # - allow theming (colors etc) via a config file?
@@ -40,6 +34,8 @@
 # - add option for "Content Warning" type use of preformatted text and alt text:
 #	https://dragonscave.space/@devinprater/105782591455644854
 # - adjust output size when terminal is resized
+# - implement logging messages, warnings, errors to file
+# - center preformatted text? at least if marked as ascii art?
 
 use strict;
 use warnings;
@@ -49,7 +45,7 @@ package Porcelain::Main;
 use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
-use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative. Also creates ...XS.so: undefined symbol 'PL_hash_state'
+use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
 #use IO::Select;					# https://stackoverflow.com/questions/33973515/waiting-for-a-defined-period-of-time-for-the-input-in-perl
 use List::Util qw(min max);
 require Net::SSLeay;					# p5-Net-SSLeay
@@ -70,6 +66,7 @@ curs_set(0);
 init_pair(1, COLOR_YELLOW, COLOR_BLACK);
 init_pair(2, COLOR_WHITE, COLOR_BLACK);
 init_pair(3, COLOR_BLUE, COLOR_BLACK);
+init_pair(4, COLOR_GREEN, COLOR_BLACK);
 
 my $url;
 my @history;
@@ -163,6 +160,14 @@ sub c_warn {	# Curses warning: prompt char, can be any key --> user char
 	return $c;
 }
 
+sub center_text {	# string --> string with leading space to position in center of terminal
+	my $str = $_[0];
+	my $colcenter = int($COLS / 2);
+	my $strcenter = int(length($str) / 2);
+	my $adjust = $colcenter - $strcenter;	# amount of space to move string by: $center - half the length of the string
+	return (" " x $adjust) . $str;
+}
+
 sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
 			# no change if $newurl is already absolute
 	my $cururl = $_[0];
@@ -203,16 +208,6 @@ sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	return ($first, $rest);
 }
 
-# TODO: remove?
-sub bold {	# string --> string (but bold)
-	return "\033[1m".$_[0]."\033[0m";
-}
-
-# TODO: remove?
-sub underscore {	# string --> string (but underscored)
-	return "\033[4m".$_[0]."\033[0m";
-}
-
 sub lines {	# multi-line text scalar --> $first_line / @lines
 	my @lines = (split /\n/, $_[0]);
 	return wantarray ? @lines : $lines[0];
@@ -238,7 +233,7 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 			next;
 		}
 		if ($t_preform) {	# preformatted text. Don't format.
-			$line = "```" . substr($_, 0, $COLS);	# Truncating to $COLS. TODO: use e.g. pad to allow lateral scrolling?
+			$line = "```" . $_;	# TODO: Truncate to $COLS? This breaks hexdsl.co.uk ASCII art. use e.g. pad to allow lateral scrolling?
 		} else {
 			# TODO: transform tabs into single space?
 			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?
@@ -325,19 +320,20 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 		}
 		if ($line =~ /^```/) {				# Preformatted
 			# TODO: handle alt text?
-			$line =~ s/^```//;
+			$line = substr $line, 3;
+			attrset(COLOR_PAIR(4));
 			getyx($y, $x);
 			addstr($y, $x, $line);
 			move($y + 1, 0);
 		} elsif ($line =~ /^###/) {			# Heading 3
-			$line =~ s/^###[[:blank:]]*//;
+			$line = substr $line, 3;
 			attrset(COLOR_PAIR(2));
 			attron(A_BOLD);
 			getyx($y, $x);
 			addstr($y, $x, $line);
 			move($y + 1, 0);
 		} elsif ($line =~ /^##/) {			# Heading 2
-			$line =~ s/^##[[:blank:]]*//;
+			$line = substr $line, 2;
 			attrset(COLOR_PAIR(2));
 			attron(A_BOLD);
 			attron(A_UNDERLINE);
@@ -345,16 +341,17 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			addstr($y, $x, $line);
 			move($y + 1, 0);
 		} elsif ($line =~ /^#/) {			# Heading 1
-			$line =~ s/^#[[:blank:]]*//;
+			$line = substr $line, 1;
+			$line = center_text $line;
 			attrset(COLOR_PAIR(1));
 			attron(A_BOLD);
 			getyx($y, $x);
-			addstr($y, $x + 12, $line);
+			addstr($y, $x, $line);
 			move($y + 1, 0);
 		} elsif ($line =~ /^=>/) {			# Link
 			# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
 			# TODO: links should NOT be wrapped!!!
-			$line =~ s/^=>//;
+			$line = substr $line, 2;
 			my @line_split = split(" ", $line);
 			my $link_index = shift @line_split; 
 			attrset(COLOR_PAIR(2));
@@ -380,8 +377,6 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			addstr($y, $x, $line);
 			move($y + 1, 0);
 		} elsif ($line =~ /^>/) {			# Quote
-			# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
-			$line =~ s/^>[[:blank:]]*(.*)/> $1/;
 			attrset(COLOR_PAIR(3));
 			getyx($y, $x);
 			addstr($y, $x, $line);
@@ -721,7 +716,9 @@ if ($^O eq 'openbsd') {
 	#	sslcat_custom:			rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
-	pledge(qw ( exec tty cpath rpath wpath inet dns proc unveil ) ) || die "Unable to pledge: $!";
+	#
+	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
+	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
 	## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
 	# TODO: tighten unveil later
