@@ -124,12 +124,11 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 }
 
 sub c_prompt {	# Curses prompt: prompt string --> user string
-	move($LINES, 0);	# move to last row
-	clrtoeol;			# clear the row
-	addstr($_[0]);
-	refresh($win);
+	my $prompt_win = newwin(0,0,$LINES - 1, 0);
+	addstr($prompt_win, $_[0]);
+	refresh($prompt_win);
 	echo;
-	my $s = getstring;
+	my $s = getstring($prompt_win);
 	noecho;
 	return $s;
 }
