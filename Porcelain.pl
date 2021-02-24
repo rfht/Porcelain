@@ -69,6 +69,7 @@ keypad(1);
 curs_set(0);
 init_pair(1, COLOR_YELLOW, COLOR_BLACK);
 init_pair(2, COLOR_WHITE, COLOR_BLACK);
+init_pair(3, COLOR_BLUE, COLOR_BLACK);
 
 my $url;
 my @history;
@@ -217,60 +218,59 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 	return wantarray ? @lines : $lines[0];
 }
 
-sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray => formatted text (to outarray), linkarray
-	# call with "gmirender $viewfrom, $viewto, \@array, \@linkarray"
-	my $hpos = $_[0];
-	my $hstop = $_[1];
-	my $inarray = $_[2];
-	my $linkarray = $_[3];
-	undef @$linkarray;	# empty linkarray
-	my $t_preform = 0;	# toggle for preformatted text
-	my $t_list = 0;		# toggle unordered list - TODO
-	my $t_quote = 0;	# toggle quote - TODO
+sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (with often different number of lines)
+		# ANYTHING that affects the number of lines to be rendered needs to be decided here!
+	my $inarray = $_[0];
+	my $outarray = $_[1];
+	my $linkarray = $_[2];
+	undef @$outarray;
+	undef @$linkarray;
+	my $t_preform = 0;
 	my $line;
 	my $link_url;
 	my $link_descr;
 	my $num_links = 0;
-	my $y;
-	my $x;
-	clear;
-	move(0, 0);
-	while ($hpos <= $hstop) {
-		$line = ${$inarray}[$hpos++];
-		if ($line =~ /^```/) {		# Preformat toggle marker
-			if (not $t_preform) {
-				$t_preform = 1;
-				# TODO: handle alt text?
-			} else {
-				$t_preform = 0;
-			}
-		} elsif (not $t_preform) {
-			if ($line =~ /^###/) {			# Heading 3
-				$line =~ s/^###[[:blank:]]*//;
-				attrset(COLOR_PAIR(2));
-				attron(A_BOLD);
-				getyx($y, $x);
-				addstr($y, $x, $line);
-				move($y + 1, 0);
-			} elsif ($line =~ /^##/) {			# Heading 2
-				$line =~ s/^##[[:blank:]]*//;
-				attrset(COLOR_PAIR(2));
-				attron(A_BOLD);
-				attron(A_UNDERLINE);
-				getyx($y, $x);
-				addstr($y, $x, $line);
-				move($y + 1, 0);
-			} elsif ($line =~ /^#/) {			# Heading 1
-				$line =~ s/^#[[:blank:]]*//;
-				attrset(COLOR_PAIR(1));
-				attron(A_BOLD);
-				getyx($y, $x);
-				addstr($y, $x + 12, $line);
-				move($y + 1, 0);
-			} elsif ($line =~ /^=>[[:blank:]]/) {	# Link
-				# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
+	my $splitpos;
+	foreach (@$inarray) {
+		undef $splitpos;
+		if ($_ =~ /^```/) {
+			$t_preform = not $t_preform;
+			next;
+		}
+		if ($t_preform) {	# preformatted text. Don't format.
+			$line = "```" . substr($_, 0, $COLS);	# Truncating to $COLS. TODO: use e.g. pad to allow lateral scrolling?
+		} else {
+			# TODO: transform tabs into single space?
+			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?
+			# TODO: add blank line after all headers and changes in content type
+			$line = $_ =~ s/\s*$//r;	# bye bye trailing whitespace TODO: apply to all lines incl preformatted?
+			if ($line =~ /^###\s*[^\s]/) {		# Heading 3	# are there any characters to print at all?
+				$line =~ s/^###\s*//;
+				while (length($line) > $COLS) {
+					$splitpos = rindex($line, ' ', $COLS - 1);
+					push @$outarray, "###" . substr($line, 0, $splitpos);
+					$line = substr($line, $splitpos + 1);
+				}
+				$line = "###" . $line;
+			} elsif ($line =~ /^##\s*[^\s]/) {	# Heading 2
+				$line =~ s/^##\s*//;
+				while (length($line) > $COLS) {
+					$splitpos = rindex($line, ' ', $COLS - 1);
+					push @$outarray, "##" . substr($line, 0, $splitpos);
+					$line = substr($line, $splitpos + 1);
+				}
+				$line = "##" . $line;
+			} elsif ($line =~ /^#\s*[\s]/) {	# Heading 1
+				$line =~ s/^#\s*//;
+				while (length($line) > $COLS) {
+					$splitpos = rindex($line, ' ', $COLS - 1);
+					push @$outarray, "#" . substr($line, 0, $splitpos);
+					$line = substr($line, $splitpos + 1);
+				}
+				$line = "#" . $line;
+			} elsif ($line =~ /^=>\s/) {		# Link
 				$num_links++;
-				$line =~ s/^=>[[:blank:]]+//;
+				$line =~ s/^=>\s+//;
 				($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
 				if ($link_descr =~ /^\s*$/) {	# if $link_descr is empty, use $link_url
@@ -278,40 +278,119 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!), linkarray 
 				} else {
 					$line = $link_descr;
 				}
-				attrset(COLOR_PAIR(2));
-				attroff(A_BOLD);
-				getyx($y, $x);
-				addstr($y, $x, "[" . $num_links . "] ");
-				attron(A_UNDERLINE);
-				getyx($y, $x);
-				addstr($y, $x, $line);
-				attroff(A_UNDERLINE);
-				move($y + 1, 0);
-			} elsif ($line =~ /^\* /) {		# Unordered List Item
-				$line =~ s/^\* [[:blank:]]*(.*)/- $1/;
-			} elsif ($line =~ /^>/) {			# Quote
-				# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
-				# TODO: style quoted lines
-				$line =~ s/^>[[:blank:]]*(.*)/> $1/;
-			} else {				# Text line
-				$line =~ s/^[[:blank:]]*//;
-				# TODO: collapse multiple whitespace characters into one space?
-				#my $splitpos;
-				#undef $splitpos;
-				#while (length($line) > $scr->cols) {
-					#$splitpos = rindex($line, ' ', $scr->cols - 1);
-					#substr($line, $splitpos, 1) = '|';
-					#$line = substr($line, $splitpos + 1);
-				#}
-				attrset(COLOR_PAIR(2));
-				getyx($y, $x);
-				addstr($y, $x, $line);
-				move($y + 1, 0);
+				$line = "=>[" . $num_links . "] " . $line;	# No length check. Should NOT be wrapped.
+			} elsif ($line =~ /^\* /) {		# Unordered List
+				$line =~ s/^\*\s+/* /;
+				while (length($line) > $COLS) {
+					$splitpos = rindex($line, ' ', $COLS - 1);
+					push @$outarray, substr($line, 0, $splitpos);
+					# TODO: ensure no whitespace after '**'
+					$line = "**" . substr($line, $splitpos + 1);	# '**' is the marker for continuation of same unordered list item. TODO: is there a better one to avoid conflicts with other text?
+				}
+			} elsif ($line =~ /^>/) {		# Quote
+				$line =~ s/^>\s*/> /;
+				while (length($line) > $COLS) {
+					$splitpos = rindex($line, ' ', $COLS - 1);
+					push @$outarray, substr($line, 0, $splitpos);
+					$line = "> " . substr($line, $splitpos + 1);
+				}
+			} else {				# Regular Text
+				$line =~ s/^\s*//;	# remove leading whitespace
+				while (length($line) > $COLS) {
+					$splitpos = rindex($line, ' ', $COLS - 1);
+					push @$outarray, substr($line, 0, $splitpos);
+					$line = substr($line, $splitpos + 1);
+				}
 			}
-		} else {					# display preformatted text
-			#$line = substr($_, 0, $scr->cols);	# TODO: disable the terminal's linewrap rather than truncating
-			#$line = $line . (" " x ($scr->cols - length($line)));
-			#$line = $scr->colored('black on cyan', $line);
+		}
+		push @$outarray, $line;
+	}
+}
+
+sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted text (to outarray)
+	# call with "gmirender $viewfrom, $viewto, \@array"
+	my $hpos = $_[0];
+	my $hstop = $_[1];
+	my $inarray = $_[2];
+	my $line;
+	my $t_list = 0;	# toggle list
+	my $y;
+	my $x;
+	clear;
+	move(0, 0);
+	while ($hpos <= $hstop) {
+		$line = ${$inarray}[$hpos++];
+		if ($t_list && not $line =~ /^\*\*/) {
+			$t_list = not $t_list;		# unordered list has not been continued. Reset the toggle.
+		}
+		if ($line =~ /^```/) {				# Preformatted
+			# TODO: handle alt text?
+			$line =~ s/^```//;
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
+		} elsif ($line =~ /^###/) {			# Heading 3
+			$line =~ s/^###[[:blank:]]*//;
+			attrset(COLOR_PAIR(2));
+			attron(A_BOLD);
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
+		} elsif ($line =~ /^##/) {			# Heading 2
+			$line =~ s/^##[[:blank:]]*//;
+			attrset(COLOR_PAIR(2));
+			attron(A_BOLD);
+			attron(A_UNDERLINE);
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
+		} elsif ($line =~ /^#/) {			# Heading 1
+			$line =~ s/^#[[:blank:]]*//;
+			attrset(COLOR_PAIR(1));
+			attron(A_BOLD);
+			getyx($y, $x);
+			addstr($y, $x + 12, $line);
+			move($y + 1, 0);
+		} elsif ($line =~ /^=>/) {			# Link
+			# TODO: style links according to same domain vs. other gemini domain vs. http[,s] vs. gopher
+			# TODO: links should NOT be wrapped!!!
+			$line =~ s/^=>//;
+			my @line_split = split(" ", $line);
+			my $link_index = shift @line_split; 
+			attrset(COLOR_PAIR(2));
+			attroff(A_BOLD);
+			getyx($y, $x);
+			addstr($y, $x, $link_index . " ");
+			attron(A_UNDERLINE);
+			getyx($y, $x);
+			addstr($y, $x, join(" ", @line_split));
+			attroff(A_UNDERLINE);
+			move($y + 1, 0);
+		} elsif ($line =~ /^\* /) {			# Unordered List Item
+			$line =~ s/^\*/-/;
+			$t_list = 1;
+			attrset(COLOR_PAIR(2));
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
+		} elsif ($line =~ /^\*\*/ && $t_list) {		# Continuation of List Item
+			$line =~ s/^\*\*/  /;
+			attrset(COLOR_PAIR(2));
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
+		} elsif ($line =~ /^>/) {			# Quote
+			# TODO: should quote lines disregard whitespace between '>' and the first printable characters?
+			$line =~ s/^>[[:blank:]]*(.*)/> $1/;
+			attrset(COLOR_PAIR(3));
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
+		} else {					# Text line
+			attrset(COLOR_PAIR(2));
+			getyx($y, $x);
+			addstr($y, $x, $line);
+			move($y + 1, 0);
 		}
 	}
 }
@@ -431,7 +510,7 @@ sub open_gmi {	# url
 	my $header =	shift @response;
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 	my $status = substr $full_status, 0, 1;
-	my @render;		# array of rendered lines
+	my @formatted;		# array of rendered lines
 	my @links;		# array containing links in the page
 	$url =~ s/[^[:print:]]//g;
 	if ($status != 3) {
@@ -454,16 +533,16 @@ sub open_gmi {	# url
 			push @history, $url;			# log to @history
 			$history_pointer = scalar(@history) - 1;
 		}
-
+		gmiformat \@response, \@formatted, \@links;
 		my $displayrows = $LINES - 1;
 		my $viewfrom = 0;	# top line to be shown
 		my $viewto;
-		my $render_length = scalar(@response);
+		my $render_length = scalar(@formatted);
 		my $update_viewport = 1;
 		while (1) {
 			$viewto = min($viewfrom + $displayrows, $render_length - 1);
 			if ($update_viewport == 1) {
-				gmirender $viewfrom, $viewto, \@response, \@links;
+				gmirender $viewfrom, $viewto, \@formatted, \@links;
 				refresh($win);
 			}
 			$update_viewport = 0;
