@@ -653,22 +653,22 @@ sub open_gemini {	# url
 				clean_exit;
 			} elsif ( $c =~ /\d/ ) {
 				addch($LINES - 1, 0, $c);
-=pod
 				if (scalar(@links) >= 10) {
 					# TODO: allow infinitely long digits by using do ... while? https://www.perlmonks.org/?node_id=282322
+					timeout(500);
 					my $keypress = getch;
-					if (defined $keypress && $keypress =~ /\d/) {	# ignore non-digit input
+					if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {	# ignore non-digit input
 						$c .= $keypress;
 						if (scalar(@links) >= 100) {	# supports up to 999 links in a page
 							undef $keypress;
 							my $keypress = getch;
-							if (defined $keypress && $keypress =~ /\d/) {
+							if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {
 								$c .= $keypress;
 							}
 						}
 					}
+					timeout(-1);
 				}
-=cut
 				unless ($c <= scalar(@links)) {
 					clean_exit "link number outside of range of current page: $c";
 				}
