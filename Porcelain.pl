@@ -531,6 +531,7 @@ sub open_gemini {	# url
 	# sslcat request
 	# TODO: avoid sslcat if viewing local file
 	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n");	# has to end with CRLF ('\r\n')
+	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
 	}
@@ -750,7 +751,15 @@ sub open_gemini {	# url
 		# TODO: implement
 		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
-		print "CLIENT CERTIFICATE REQUIRED\n";
+		# https://www.golinuxcloud.com/openssl-create-client-server-certificate/
+		# https://docs.microfocus.com/SM/9.60/Codeless/Content/security/concepts/example_generating_a_client_certificate_with_openssl.htm
+		#
+		# STEPS:
+		# - create client private key client.key.pem if not existent: openssl genrsa -out client.key.pem 4096
+		# - create client CSR client.csr: openssl req -new -key client.key.pem -out client.csr
+		# - create the certificate client.cert.pem: openssl x509 -req -in client.csr -passin file:mypass.enc -CA /.../tls/intermediate/certs/ca-chain-bundle.cert.pem -CAkey ... -out client.cert.pem -CAcreateserial -days 365 -sha256 -extfile client_cert_ext.cnf
+		c_err "CLIENT CERTIFICATE REQUIRED - This is not implemented yet.";
+		clean_exit;
 	} else {
 		die "Invalid status code in response";
 	}
