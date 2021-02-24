@@ -602,33 +602,35 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 # Init: ssl, pledge, unveil
 Net::SSLeay::initialize();	# initialize ssl library once
 
-# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
-#	sslcat_custom:			rpath inet dns
-#	Term::Screen			proc	# -> NOT USED
-#	Term::ReadKey - ReadMode 0	tty
-#	system (for xdg-open)		exec
-#	Curses				tty
-pledge(qw ( exec tty cpath rpath wpath inet dns unveil ) ) || die "Unable to pledge: $!";
-## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
+if ($^O eq 'openbsd') {
+	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
+	#	sslcat_custom:			rpath inet dns
+	#	Term::Screen			proc	# -> NOT USED
+	#	Term::ReadKey - ReadMode 0	tty
+	#	system (for xdg-open)		exec
+	#	Curses				tty
+	pledge(qw ( exec tty cpath rpath wpath inet dns unveil ) ) || die "Unable to pledge: $!";
+	## ALL PROMISES FOR TESTING ##pledge(qw ( rpath inet dns tty unix exec tmppath proc route wpath cpath dpath fattr chown getpw sendfd recvfd tape prot_exec settime ps vminfo id pf route wroute mcast unveil ) ) || die "Unable to pledge: $!";
 
-# TODO: tighten unveil later
-# ### LEAVE OUT UNTIL USING ### unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
-unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
-unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
-unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
-unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat(r)
-# TODO: unveiling /bin/sh is problematic
-### LEAVE OUT ###unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
-unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
-### LEAVE OUT ###unveil( "/usr/local/libdata/perl5/site_perl/Curses", "x") || die "Unable to unveil: $!";	# for Curses TODO: tighten more?
-unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
-if (-f $porcelain_dir . '/open.conf') {
-	%open_with = readconf($porcelain_dir . '/open.conf');
+	# TODO: tighten unveil later
+	# ### LEAVE OUT UNTIL USING ### unveil( "$ENV{'HOME'}/Downloads", "rw") || die "Unable to unveil: $!";
+	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
+	unveil( "/usr/local/libdata/perl5/site_perl/IO/Pager", "rwx") || die "Unable to unveil: $!";
+	unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
+	unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat(r)
+	# TODO: unveiling /bin/sh is problematic
+	### LEAVE OUT ###unveil( "/bin/sh", "x") || die "Unable to unveil: $!";	# Term::Screen needs access to /bin/sh to hand control back to the shell
+	unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
+	### LEAVE OUT ###unveil( "/usr/local/libdata/perl5/site_perl/Curses", "x") || die "Unable to unveil: $!";	# for Curses TODO: tighten more?
+	unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
+	if (-f $porcelain_dir . '/open.conf') {
+		%open_with = readconf($porcelain_dir . '/open.conf');
+	}
+	for my $v (values %open_with) {
+		unveil( $v, "x") || die "Unable to unveil: $!";
+	}
+	unveil() || die "Unable to lock unveil: $!";
 }
-for my $v (values %open_with) {
-	unveil( $v, "x") || die "Unable to unveil: $!";
-}
-unveil() || die "Unable to lock unveil: $!";
 
 # process user input
 # TODO: allow and process CLI flags
