@@ -52,6 +52,7 @@ require Net::SSLeay;					# p5-Net-SSLeay
 use OpenBSD::Pledge;					# OpenBSD::Pledge(3p)
 use OpenBSD::Unveil;					# OpenBSD::Unveil(3p)
 use Pod::Usage;
+use Any::URI::Escape;					# to handle percent encoding (uri_escape())
 use utf8;						# TODO: really needed?
 
 # Curses init
@@ -69,6 +70,7 @@ init_pair(3, COLOR_BLUE, COLOR_BLACK);
 init_pair(4, COLOR_GREEN, COLOR_BLACK);
 init_pair(5, COLOR_CYAN, COLOR_BLACK);
 init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+init_pair(7, COLOR_RED, COLOR_WHITE);
 
 my $url;
 my @history;
@@ -153,6 +155,19 @@ sub c_prompt_ch {	# Curses prompt for char: prompt char --> user char
 sub c_warn {	# Curses warning: prompt char, can be any key --> user char
 	my $prompt_win = newwin(0,0,$LINES - 1, 0);
 	bkgd($prompt_win, COLOR_PAIR(1) | A_REVERSE);
+	addstr($prompt_win, $_[0]);
+	refresh($prompt_win);
+	echo;
+	curs_set(1);
+	my $c = getchar($prompt_win);
+	noecho;
+	curs_set(0);
+	return $c;
+}
+
+sub c_err {	# Curses error: prompt char, can be any key --> user char
+	my $prompt_win = newwin(0,0,$LINES - 1, 0);
+	bkgd($prompt_win, COLOR_PAIR(7) | A_REVERSE);
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
 	echo;
@@ -528,26 +543,28 @@ sub open_gemini {	# url
 	my @response =	lines($raw_response);
 	my $header =	shift @response;
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
+	chomp $meta;
+
 	my $status = substr $full_status, 0, 1;
 	my @formatted;		# array of rendered lines
 	undef @links;
+	my $r;		# responses to prompts
 	$url =~ s/[^[:print:]]//g;
+	$meta =~ s/[^[:print:]]//g;
 	if ($status != 3) {
 		$redirect_count = 0;	# reset the $redirect_count
 	}
 	if ($status == 1) {		# 1x: INPUT
-		# TODO: implement
-		# <META> is a prompt to display to the user
-		# after user input, request the same resource again with the user input as the query component
-		# query component is separated from the path by '?'. Reserved characters including spaces must be "percent-encoded"
-		# 11: SENSITIVE INPUT (e.g. password entry) - don't echo
-		print "INPUT\n";
+		# TODO: 11: SENSITIVE INPUT (e.g. password entry) - don't echo
+		$r = c_prompt_str $meta . ": ";	# TODO: other separator? check if $meta includes ':' at the end?
+		$r = uri_escape $r;
+		$url = $url . "?" . $r;		# query component is separated from the path by '?'.
+		return;
 	} elsif ($status == 2) {	# 2x: SUCCESS
 		# <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
 		# TODO: process language, encoding
 
 		# is content text/gemini or something else?
-		chomp $meta;
 		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
 			# check if extension in %open_with
 			my $f_ext = $url =~ s/.*\././r;
@@ -556,7 +573,7 @@ sub open_gemini {	# url
 				print $fh join("\n", @response) or clean_exit "error writing to pipe";
 				close $fh;
 			} else {
-				my $r = '';
+				$r = '';
 				until ($r =~ /[YyNn]/) {
 					$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
 				}
@@ -679,7 +696,6 @@ sub open_gemini {	# url
 	} elsif ($status == 3) {	# 3x: REDIRECT
 		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 		chomp $url;
-		chomp $meta;
 		$redirect_count++;
 		if ($redirect_count > $redirect_max) {
 			die "ERROR: more than maximum number of $redirect_max redirects";
@@ -694,12 +710,42 @@ sub open_gemini {	# url
 		# TODO: implement proper error message without dying
 		# <META>: additional information about the failure. Client should display this to the user.
 		# 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
-		print "TEMPORARY FAILURE\n";
+		do {
+			$r = c_err "4x: Temporary Failure: $meta. [B]ack, [R]etry, [O]ther URL or [Q]uit?"; # TODO: [B]ack not working
+		} until ($r =~ /^[BbRrOoQq]$/);
+		if ($r =~ /^[Oo]$/) {
+			$url = c_prompt_str("url: gemini://");	# TODO: allow relative links??
+			$url = 'gemini://' . $url;
+			return;
+		} elsif ($r =~ /^[Bb]$/) {
+			if ($history_pointer > 0) {
+				$history_pointer--;
+				$url = $history[$history_pointer];
+				return;
+			}	# TODO: warn if trying to go back when at $history_pointer == 0?
+		} elsif ($r =~ /^[Qq]$/) {
+			clean_exit;
+		}
 	} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
 		# TODO: implement proper error message without dying
 		# <META>: additional information, client to display this to the user
 		# 50: PERMANENT FAILURE, 51: NOT FOUND, 52: GONE, 53: PROXY REQUEST REFUSED, 59: BAD REQUEST
-		print "PERMANENT FAILURE\n";
+		do {
+			$r = c_err "5x: Permanent Failure: $meta. [B]ack, [R]etry, [O]ther URL or [Q]uit?"; # TODO: [B]ack not working
+		} until ($r =~ /^[BbRrOoQq]$/);
+		if ($r =~ /^[Oo]$/) {
+			$url = c_prompt_str("url: gemini://");	# TODO: allow relative links??
+			$url = 'gemini://' . $url;
+			return;
+		} elsif ($r =~ /^[Bb]$/) {
+			if ($history_pointer > 0) {
+				$history_pointer--;
+				$url = $history[$history_pointer];
+				return;
+			}	# TODO: warn if trying to go back when at $history_pointer == 0?
+		} elsif ($r =~ /^[Qq]$/) {
+			clean_exit;
+		}
 	} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
 		# TODO: implement
 		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
