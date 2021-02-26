@@ -128,6 +128,7 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	}
 }
 
+# c_* functions are for Curses
 sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
 	my $prompt_win = newwin(0,0,$LINES - 1, 0);
 	bkgd($prompt_win, COLOR_PAIR(2) | A_REVERSE);
@@ -188,6 +189,7 @@ sub center_text {	# string --> string with leading space to position in center o
 	return (" " x $adjust) . $str;
 }
 
+# TODO: change this function name to 'absolute_url' to be clearer
 sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
 	my $cururl = $_[0];
 	my $newurl = $_[1];
@@ -524,6 +526,7 @@ sub downloader {	# $body --> 0: success, >0: failure
 	return 0;
 }
 
+# TODO: separate subs for gemini protocol and text/gemini resource
 sub open_gemini {	# url
 	my $domain = gem_host($_[0]);
 
@@ -764,6 +767,11 @@ sub open_gemini {	# url
 	}
 }
 
+sub open_file_protocol {	# open from 'file://..' resource
+	# get file MIME type with 'file -bi' command
+	# if text/gemini, read file into variable, then render
+}
+
 sub open_custom {
 	if (defined $open_with{$_[0]}) {
 		system("$open_with{$_[0]} $_[1]");
@@ -774,6 +782,8 @@ sub open_custom {
 }
 
 sub open_url {
+	# TODO: read from %open_with, open with 'gemini' protocol or other modality
+	# TODO: then determine the resource MIME type and call appropriate resource sub
 	if (uri_class($_[0]) eq 'gemini') {
 		open_gemini $_[0];
 	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
@@ -812,6 +822,7 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 }
 
 # Init: ssl, pledge, unveil
+# TODO: separate out into init sub or multiple subs
 Net::SSLeay::initialize();	# initialize ssl library once
 
 if ($^O eq 'openbsd') {
@@ -852,6 +863,7 @@ if (scalar @ARGV == 0) {	# no URI passed
 	}
 }
 
+# Main loop
 while ($url) {
 	open_url $url;
 }
@@ -866,7 +878,7 @@ Porcelain - a gemini browser
 
 =head1 SYNOPSIS
 
-Porcelain.pl [url]
+porcelain [url]
 
 =head1 DESCRIPTION
 
@@ -876,15 +888,33 @@ be a "spec-preserving" gemini browser, meaning no support for
 non-spec extension attempts (like favicons, metadata). Automatic opening
 or inline display of non-gemini/text content is opt-in.
 
+If you open a URL (either passed from CLI or opened in Porcelain),
+Porcelain will determine the protocol for the connection and try to
+obtain the resource. The 'gemini' and 'file' protocols are supported
+by default. You can specify applications to open other protocols like
+'https' in ~/.porcelain/open.conf.
+
+If the protocol is supported, Porcelain will try to determine the MIME
+type of the resource. MIME type text/gemini is supported natively.
+Other MIME types like 'image/png' can be opened with external programs
+specified in ~/.porcelain/open.conf.
+
+If the MIME type is not known or cannot be determined, Porcelain will
+try to find the extension (like '.gmi') in ~/.porcelain/open.conf.
+
 =head1 KEYS
 
 =over
 
-=item h
+=item H
 
 Display browsing history.
 
-=item H
+=item o
+
+Open a new link (prompts for link)
+
+=item Alt-H
 
 Return to home page.
 
@@ -896,37 +926,69 @@ Print infos (mostly for debugging).
 
 Quit the application.
 
-=item Ctrl-H
+=item Backspace/Ctrl-H
 
 Go back in browsing history.
 
-=item Space/Page Down
+=item Shift+Backspace/Ctrl-L
+
+Go forward in browsing history.
+
+=item n
+
+Next page in directory.
+
+=item p
+
+Previous page in directory.
+
+=item u
+
+Go up in the directory hierarchy.
+
+=item r
+
+Go to root of the domain. 
+
+=item R/F5
+
+Reload/refresh page.
+
+=item Space/PageDown
 
 Scroll down page-wise.
 
-=item B/Page Up
+=item b/PageUp
 
 Scroll up page-wise.
 
-=item Down
+=item j/Down
 
 Scroll down line-wise.
 
-=item Up
+=item k/Up
 
 Scroll up line-wise.
 
-=item Home
+=item K/Home
 
 Go to the beginning of the page.
 
-=item End
+=item J/End
 
 Go to the end of the page.
 
 =item 1,2,3,...
 
 Open link with that number.
+
+=item /
+
+Search page for text.
+
+=item :
+
+Command entry.
 
 =back
 
