@@ -24,7 +24,8 @@
 # - limit size of history; can be configurable in whatever config approach is later chosen
 # - implement a hotkey to view history
 # - implement subscribed option
-# - display 1 and only 1 empty line after all headers?
+# - display 1 and only 1 empty line after all headings?
+# - include the hashmarks '#', '##', '###' in headings?
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
@@ -34,6 +35,12 @@
 # - implement logging messages, warnings, errors to file
 # - center preformatted text? at least if marked as ascii art?
 # - add mouse support?!
+# - what to do about domains that send a certificate that is from a different CN??
+# - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
+# - implement '/' key for search
+# - implement 'u' to go up in directory hierarchy, and another key to go to the root of the current domain
+# - manage back and forward function with push, pop: https://portal.mozz.us/gemini/mozz.us/journal/2021-01-01.gmi
+# - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 
 use strict;
 use warnings;
