@@ -48,10 +48,13 @@ use warnings;
 use feature 'unicode_strings';
 package Porcelain::Main;
 
+$main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
+
 use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
 use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
+use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
 require Net::SSLeay;
 use OpenBSD::Pledge;
@@ -60,28 +63,12 @@ use Pod::Usage;
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
 use utf8;			# TODO: really needed?
 
-# Curses init
-initscr;
-start_color;	# TODO: check if (has_colors)
-my $win = newwin(0,0,0,0);
-noecho;
-nonl;
-cbreak;
-keypad(1);
-curs_set(0);
-init_pair(1, COLOR_YELLOW, COLOR_BLACK);
-init_pair(2, COLOR_WHITE, COLOR_BLACK);
-init_pair(3, COLOR_BLUE, COLOR_BLACK);
-init_pair(4, COLOR_GREEN, COLOR_BLACK);
-init_pair(5, COLOR_CYAN, COLOR_BLACK);
-init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
-init_pair(7, COLOR_RED, COLOR_WHITE);
-
 my $url;
 my @history;
 my $history_pointer = 0;
 my %open_with;
 my @links;		# array containing links in the pages
+my $win;
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
@@ -822,18 +809,63 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 	return %retval
 }
 
+my $configfile = $porcelain_dir . "/porcelain.conf";
+my $opt_dump =		'';	# dump page to STDOUT
+my $opt_pledge =	'';	# use pledge
+my $stdio;			# contains STDIN via '-'
+my $opt_unveil =	'';	# use unveil
+
+if ($^O eq 'openbsd') {	# pledge and unveil by default
+	$opt_pledge = 1;
+	$opt_unveil = 1;
+}
+
+GetOptions (
+		"conf|c=s"	=> \$configfile,
+		"dump|d"	=> \$opt_dump,
+		"help|h"	=> sub { Getopt::Long::HelpMessage() },
+		"man|m"		=> sub { pod2usage(-exitval => 0, -verbose => 2) },
+		"pledge!"	=> \$opt_pledge,	# --nopledge disables
+		''		=> \$stdio,
+		"unveil!"	=> \$opt_unveil,	# --nounveil disables
+		"version|v"	=> sub { Getopt::Long::VersionMessage() },
+);
+# Note: auto_version provides '--version' via $main::VERSION
+#	auto_help provides '--help' via Pod::Usage;
+
 # Init: ssl, pledge, unveil
 # TODO: separate out into init sub or multiple subs
 Net::SSLeay::initialize();	# initialize ssl library once
 
-if ($^O eq 'openbsd') {
+# Curses init
+if (not $opt_dump) {
+    initscr;
+    start_color;	# TODO: check if (has_colors)
+    $win = newwin(0,0,0,0);
+    noecho;
+    nonl;
+    cbreak;
+    keypad(1);
+    curs_set(0);
+    init_pair(1, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(2, COLOR_WHITE, COLOR_BLACK);
+    init_pair(3, COLOR_BLUE, COLOR_BLACK);
+    init_pair(4, COLOR_GREEN, COLOR_BLACK);
+    init_pair(5, COLOR_CYAN, COLOR_BLACK);
+    init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(7, COLOR_RED, COLOR_WHITE);
+}
+
+if ($opt_pledge) {
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
 	#	sslcat_custom:			rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
 	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
 	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
+}
 
+if ($opt_unveil) {
 	# TODO: tighten unveil later
 	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";
 	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
@@ -852,8 +884,6 @@ if ($^O eq 'openbsd') {
 	unveil() || die "Unable to lock unveil: $!";
 }
 
-# process user input
-# TODO: allow and process CLI flags
 if (scalar @ARGV == 0) {	# no URI passed
 	$url = "gemini://gemini.circumlunar.space/";
 } else {
@@ -879,7 +909,16 @@ Porcelain - a gemini browser
 
 =head1 SYNOPSIS
 
-porcelain [url]
+porcelain [-hmv]
+porcelain [-d] [--nopledge] [--nounveil] [url|-]
+
+Options:
+  -h/--help	brief help message
+  -m/--man	full documentation
+  -v/--version	version information
+  -d/--dump	dump rendered page to STDOUT
+  --nopledge	disable pledge system call restrictions
+  --nounveil	disable unveil file hierarchy restrictions
 
 =head1 DESCRIPTION
 
