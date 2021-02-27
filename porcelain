@@ -42,6 +42,9 @@
 # - manage back and forward function with push, pop: https://portal.mozz.us/gemini/mozz.us/journal/2021-01-01.gmi
 # - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 # - update README, ideally as output from pod2usage
+# - lower-case the whole project?
+# - split subs out into .pm?
+# - move documentation into porcelain.pod?
 
 use strict;
 use warnings;
