@@ -39,6 +39,7 @@
 # - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
 # - implement '/' key for search
 # - implement 'u' to go up in directory hierarchy, and another key to go to the root of the current domain
+# - implement '|' to pipe to external programs (like espeak)
 # - manage back and forward function with push, pop: https://portal.mozz.us/gemini/mozz.us/journal/2021-01-01.gmi
 # - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 # - update README, ideally as output from pod2usage
