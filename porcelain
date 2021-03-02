@@ -46,6 +46,8 @@
 # - lower-case the whole project?
 # - split subs out into .pm?
 # - move documentation into porcelain.pod?
+# - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
+# - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
 
 use strict;
 use warnings;
