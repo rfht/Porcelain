@@ -25,7 +25,6 @@
 # - implement a hotkey to view history
 # - implement subscribed option
 # - display 1 and only 1 empty line after all headings?
-# - include the hashmarks '#', '##', '###' in headings?
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
@@ -34,15 +33,12 @@
 # - implement logging messages, warnings, errors to file
 # - center preformatted text? at least if marked as ascii art?
 # - add mouse support?!
-# - what to do about domains that send a certificate that is from a different CN??
 # - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
 # - implement '/' key for search
 # - implement 'u' to go up in directory hierarchy, and another key to go to the root of the current domain
 # - implement '|' to pipe to external programs (like espeak)
-# - manage back and forward function with push, pop: https://portal.mozz.us/gemini/mozz.us/journal/2021-01-01.gmi
 # - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 # - update README, ideally as output from pod2usage
-# - lower-case the whole project?
 # - split subs out into .pm?
 # - move documentation into porcelain.pod?
 # - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
@@ -77,8 +73,8 @@ use Pod::Usage;
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
 
 my $url;
-my @history;
-my $history_pointer = 0;
+my @back_history;
+my @forward_history;
 my %open_with;
 my @links;		# array containing links in the pages
 my $win;
@@ -547,6 +543,7 @@ sub open_gemini {	# url
 		# TODO: process language, encoding
 
 		# is content text/gemini or something else?
+		# TODO: support text/plain
 		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
 			# check if extension in %open_with
 			my $f_ext = $url =~ s/.*\././r;
@@ -563,19 +560,14 @@ sub open_gemini {	# url
 					downloader(join("\n", @response)) && c_warn "Download of $url failed!";
 				}
 			}
-			if ($history_pointer > 0) {
-				$url = $history[$history_pointer];
-				return;
-			}	# TODO: warn if trying to go back when at $history_pointer == 0?
-		}
-
-		if ($history[$history_pointer] ne $url) {	# $url and @history at pointer are not equal if we are NOT browsing back in history
-			if (scalar(@history) > $history_pointer + 1) {
-				splice @history, $history_pointer + 1;	# remove history after pointer in case we've gone back in history and this is a new site
+			if (scalar(@back_history) > 0) {
+				$url = pop @back_history;
+			} else {
+				clean_exit "unable to open $url";
 			}
-			push @history, $url;			# log to @history
-			$history_pointer = scalar(@history) - 1;
 		}
+		#push @back_history, $url;
+
 		gmiformat \@response, \@formatted, \@links;
 		my $displayrows = $LINES - 1;
 		my $viewfrom = 0;	# top line to be shown
@@ -597,22 +589,28 @@ sub open_gemini {	# url
 			if (! defined $fn) {
 				$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
 			}
-			if ($c eq 'H') {	# history
-				#$scr->puts(join(' ', @history));
+			if ($c eq 'H') {	# back in history
+				c_prompt_ch join(' ', @back_history);
 			#} elsif ($c =~ /\aH/) {	# home
 				#$url = "gemini://gemini.circumlunar.space/";
 				#return;
 			} elsif ($c eq 'I') {	# info
-				#$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@history));
+				#$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@back_history));
 			} elsif ($c eq 'q') {	# quit
 				undef $url;
 				return;
 			} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
-				if ($history_pointer > 0) {
-					$history_pointer--;
-					$url = $history[$history_pointer];
+				if (scalar(@back_history) > 0) {
+					push @forward_history, $url;
+					$url = pop @back_history;
 					return;
-				}	# TODO: warn if trying to go back when at $history_pointer == 0?
+				}
+			} elsif ($c eq "F") {	# forward in history
+				if (scalar(@forward_history) > 0) {
+					push @back_history, $url;
+					$url = shift @forward_history;
+					return;
+				}
 			} elsif ($fn eq KEY_RESIZE) {
 				$update_viewport = 1;
 			} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
@@ -675,6 +673,7 @@ sub open_gemini {	# url
 				unless ($c <= scalar(@links)) {
 					clean_exit "link number outside of range of current page: $c";
 				}
+				push @back_history, $url;	# save last url to back_history
 				$url = expand_url($url, $links[$c - 1]);
 				return;
 			}
@@ -704,11 +703,10 @@ sub open_gemini {	# url
 			$url = 'gemini://' . $url;
 			return;
 		} elsif ($r =~ /^[Bb]$/) {
-			if ($history_pointer > 0) {
-				$history_pointer--;
-				$url = $history[$history_pointer];
+			if (scalar(@back_history) > 0) {
+				$url = pop @back_history;
 				return;
-			}	# TODO: warn if trying to go back when at $history_pointer == 0?
+			}
 		} elsif ($r =~ /^[Qq]$/) {
 			clean_exit;
 		}
@@ -724,11 +722,12 @@ sub open_gemini {	# url
 			$url = 'gemini://' . $url;
 			return;
 		} elsif ($r =~ /^[Bb]$/) {
-			if ($history_pointer > 0) {
-				$history_pointer--;
-				$url = $history[$history_pointer];
+			if (scalar(@back_history) > 0) {
+				$url = pop @back_history;
 				return;
-			}	# TODO: warn if trying to go back when at $history_pointer == 0?
+			} else {
+				clean_exit "error invalid url: $url";
+			}
 		} elsif ($r =~ /^[Qq]$/) {
 			clean_exit;
 		}
@@ -758,7 +757,7 @@ sub open_file_protocol {	# open from 'file://..' resource
 sub open_custom {
 	if (defined $open_with{$_[0]}) {
 		system("$open_with{$_[0]} $_[1]");
-		$url = $history[$history_pointer];
+		$url = pop @back_history;
 	} else {
 		clean_exit "Not implemented.";
 	}
