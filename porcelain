@@ -231,92 +231,70 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 	return wantarray ? @lines : $lines[0];
 }
 
+# format $line by breaking it into multiple line if needed.  $extra is
+# the length of the prepended string when rendered, $p1 and $p2 the
+# prefixes added to the first and the following lines respectively.
+sub fmtline {
+	my ($line, $outarray, $extra, $p1, $p2) = @_;
+	my $prefix = $p1 || '';
+	my $cols = $COLS - $extra;
+
+	while (length($line) + $extra > $cols) {
+		my $splitpos = rindex($line, ' ', $cols - 1);
+		push @$outarray, $prefix . substr($line, 0, $splitpos);
+		$line = substr($line, $splitpos + 1);
+		$prefix = $p2 || $p1 || '';
+	}
+	push @$outarray, $prefix . $line;
+}
+
 sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (with often different number of lines)
 		# ANYTHING that affects the number of lines to be rendered needs to be decided here!
-	my $inarray = $_[0];
-	my $outarray = $_[1];
-	my $linkarray = $_[2];
+	my ($inarray, $outarray, $linkarray) = @_;
 	undef @$outarray;
 	undef @$linkarray;
 	my $t_preform = 0;
-	my $line;
-	my $link_url;
-	my $link_descr;
 	my $num_links = 0;
-	my $splitpos;
 	foreach (@$inarray) {
-		undef $splitpos;
 		if ($_ =~ /^```/) {
 			$t_preform = not $t_preform;
 			next;
 		}
 		if ($t_preform) {	# preformatted text. Don't mess it up.
-			$line = "```" . $_;	# TODO: Truncate to $COLS? This breaks hexdsl.co.uk ASCII art. use e.g. pad to allow lateral scrolling?
+			# TODO: Truncate to $COLS? This breaks hexdsl.co.uk ASCII art. use e.g. pad to allow lateral scrolling?
+			push @$outarray, "```" . $_;
 		} else {
 			# TODO: transform tabs into single space?
 			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?
 			# TODO: add blank line after all headers and changes in content type
 			# TODO: find multiple serial empty lines and transform into just one?
-			$line = $_ =~ s/\s*$//r;	# bye bye trailing whitespace TODO: apply to all lines incl preformatted?
+			my $line = $_ =~ s/\s*$//r;	# bye bye trailing whitespace TODO: apply to all lines incl preformatted?
 			if ($line =~ /^###\s*[^\s]/) {		# Heading 3	# are there any characters to print at all?
-				$line =~ s/^###\s*//;
-				while (length($line) > $COLS) {
-					$splitpos = rindex($line, ' ', $COLS - 1);
-					push @$outarray, "###" . substr($line, 0, $splitpos);
-					$line = substr($line, $splitpos + 1);
-				}
-				$line = "###" . $line;
+				fmtline($line =~ s/^###\s*//r, $outarray, 0, '###');
 			} elsif ($line =~ /^##\s*[^\s]/) {	# Heading 2
-				$line =~ s/^##\s*//;
-				while (length($line) > $COLS) {
-					$splitpos = rindex($line, ' ', $COLS - 1);
-					push @$outarray, "##" . substr($line, 0, $splitpos);
-					$line = substr($line, $splitpos + 1);
-				}
-				$line = "##" . $line;
+				fmtline($line =~ s/^##\s*//r, $outarray, 0, '##');
 			} elsif ($line =~ /^#\s*[\s]/) {	# Heading 1
-				$line =~ s/^#\s*//;
-				while (length($line) > $COLS) {
-					$splitpos = rindex($line, ' ', $COLS - 1);
-					push @$outarray, "#" . substr($line, 0, $splitpos);
-					$line = substr($line, $splitpos + 1);
-				}
-				$line = "#" . $line;
+				fmtline($line =~ s/^#\s*//r, $outarray, 0, '#');
 			} elsif ($line =~ /^=>\s/) {		# Link
 				$num_links++;
 				$line =~ s/^=>\s+//;
-				($link_url, $link_descr) = sep $line;
+				my ($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
 				if ($link_descr =~ /^\s*$/) {	# if $link_descr is empty, use $link_url
 					$line = $link_url;
 				} else {
 					$line = $link_descr;
 				}
-				$line = "=>[" . $num_links . "] " . $line;	# No length check. Should NOT wrap.
+				my $p = "=>[" . $num_links . "] ";
+				fmtline($line, $outarray, length($p)-2, $p);
 			} elsif ($line =~ /^\* /) {		# Unordered List
-				$line =~ s/^\*\s+/* /;
-				while (length($line) > $COLS) {
-					$splitpos = rindex($line, ' ', $COLS - 1);
-					push @$outarray, substr($line, 0, $splitpos);
-					$line = "**" . substr($line, $splitpos + 1);	# '**' is the marker for continuation of same unordered list item. TODO: is there a better one to avoid conflicts with other text?
-				}
+				fmtline($line =~ s/^\*\s+//r, $outarray, 2, '* ', '**');
 			} elsif ($line =~ /^>/) {		# Quote
-				$line =~ s/^>\s*/> /;
-				while (length($line) > $COLS) {
-					$splitpos = rindex($line, ' ', $COLS - 1);
-					push @$outarray, substr($line, 0, $splitpos);
-					$line = "> " . substr($line, $splitpos + 1);
-				}
+				fmtline($line =~ s/^>\s*//r, $outarray, 2, '> ');
 			} else {				# Regular Text
-				$line =~ s/^\s*//;	# remove leading whitespace
-				while (length($line) > $COLS) {
-					$splitpos = rindex($line, ' ', $COLS - 1);
-					push @$outarray, substr($line, 0, $splitpos);
-					$line = substr($line, $splitpos + 1);
-				}
+				fmtline($line =~ s/^\s*//r, $outarray, 0);
 			}
 		}
-		push @$outarray, $line;
 	}
 }
 
@@ -368,7 +346,6 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			move($y + 1, 0);
 		} elsif ($line =~ /^=>/) {			# Link
 			# TODO: style links according to same domain vs. other gemini domains
-			# TODO: links should NOT be wrapped!!!
 			$line = substr $line, 2;
 			my @line_split = split(" ", $line);
 			my $link_index = shift @line_split;
