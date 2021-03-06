@@ -48,9 +48,7 @@
 # - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
 # - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
 # - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi
-# - fix "Use of uninitialized value $c in string eq at porcelain line 614." when pressing CS-Enter in kitty
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
-# - fix markers not displaying in links ("Fediverse on Wikipedia", "txtweb,...") in gemini://cadadr.space/blag-2021-03-05-hello.gmi
 
 # BUGS:
 # - 09:47 <op2> gemini://gemini.omarpolo.com/cgi/gempkg and open the first link, "search a package"
@@ -69,6 +67,7 @@ use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
 use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
+use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
 require Net::SSLeay;
@@ -496,6 +495,7 @@ sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 }
 
 sub downloader {	# $body --> 0: success, >0: failure
+	# TODO: add timeout; progress bar
 	my $dl_file = $url =~ s|^.*/||r;
 	$dl_file = $ENV{'HOME'} . "/Downloads/" . $dl_file;
 	c_prompt_ch "Downloading $url ...";
@@ -522,7 +522,7 @@ sub open_gemini {	# url
 	validate_cert($server_cert) && clean_exit "Error while checking server certificate";
 
 	# TODO: enforce <META>: UTF-8 encoded, max 1024 bytes
-	my @response =	lines($raw_response);
+	my @response =	lines(decode('UTF-8', $raw_response));	# TODO: allow non-UTF8 encodings?
 	my $header =	shift @response;
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 	chomp $meta;
