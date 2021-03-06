@@ -600,11 +600,12 @@ sub open_gemini {	# url
 			if ($c eq 'H') {	# back in history
 				c_prompt_ch join(' ', @back_history);
 				$update_viewport = 1;
-			#} elsif ($c =~ /\aH/) {	# home
-				#$url = "gemini://gemini.circumlunar.space/";
-				#return;
 			} elsif ($c eq 'I') {	# info
-				#$scr->at($displayrows + 1, 0)->puts("displayrows: $displayrows, viewfrom: $viewfrom, viewto: $viewto, links: " . scalar(@links) . ", history length: " . scalar(@back_history));
+				my $linesfrom = $viewfrom + 1;
+				my $linesto = $viewto + 1;
+				my $linespercent = int($linesto / $render_length * 100);
+				c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
+				$update_viewport = 1;
 			} elsif ($c eq 'q') {	# quit
 				undef $url;
 				return;
@@ -620,7 +621,7 @@ sub open_gemini {	# url
 					$url = pop @forward_history;
 					return;
 				}
-			} elsif ($fn eq KEY_RESIZE) {
+			} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
 				$update_viewport = 1;
 			} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
 				if ($viewto < $render_length - 1) {
