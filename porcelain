@@ -45,6 +45,7 @@
 # - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
 # - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
+# - refactor sub validate_cert
 
 # BUGS:
 # - 09:47 <op2> gemini://gemini.omarpolo.com/cgi/gempkg and open the first link, "search a package"
@@ -71,6 +72,8 @@ use OpenBSD::Pledge;
 use OpenBSD::Unveil;
 use Pod::Usage;
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
+
+use open ':encoding(UTF-8)';
 
 my $url;
 my @back_history;
@@ -606,7 +609,7 @@ sub open_gemini {	# url
 					$url = pop @back_history;
 					return;
 				}
-			} elsif ($c eq "F") {	# forward in history
+			} elsif ($c eq "\cL") {	# forward in history
 				if (scalar(@forward_history) > 0) {
 					push @back_history, $url;
 					$url = pop @forward_history;
