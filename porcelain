@@ -139,6 +139,7 @@ sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
 	my $s = getstring($prompt_win);
 	noecho;
 	curs_set(0);
+	delwin($prompt_win);
 	return $s;
 }
 
@@ -152,6 +153,7 @@ sub c_prompt_ch {	# Curses prompt for char: prompt char --> user char
 	my $c = getchar($prompt_win);
 	noecho;
 	curs_set(0);
+	delwin($prompt_win);
 	return $c;
 }
 
@@ -165,6 +167,7 @@ sub c_warn {	# Curses warning: prompt char, can be any key --> user char
 	my $c = getchar($prompt_win);
 	noecho;
 	curs_set(0);
+	delwin($prompt_win);
 	return $c;
 }
 
@@ -178,6 +181,7 @@ sub c_err {	# Curses error: prompt char, can be any key --> user char
 	my $c = getchar($prompt_win);
 	noecho;
 	curs_set(0);
+	delwin($prompt_win);
 	return $c;
 }
 
@@ -595,6 +599,7 @@ sub open_gemini {	# url
 			}
 			if ($c eq 'H') {	# back in history
 				c_prompt_ch join(' ', @back_history);
+				$update_viewport = 1;
 			#} elsif ($c =~ /\aH/) {	# home
 				#$url = "gemini://gemini.circumlunar.space/";
 				#return;
@@ -656,6 +661,7 @@ sub open_gemini {	# url
 				my $s = c_prompt_str(": ");
 				addstr(0, 0, "You typed: " . $s);
 				getch;
+				$update_viewport = 1;
 				clean_exit;
 			} elsif ( $c =~ /\d/ ) {
 				addch($LINES - 1, 0, $c);
