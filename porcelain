@@ -48,6 +48,10 @@
 # - move documentation into porcelain.pod?
 # - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
 # - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
+# - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi
+# - fix "Use of uninitialized value $c in string eq at porcelain line 614." when pressing CS-Enter in kitty
+# - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
+# - fix markers not displaying in links ("Fediverse on Wikipedia", "txtweb,...") in gemini://cadadr.space/blag-2021-03-05-hello.gmi
 
 use strict;
 use warnings;
