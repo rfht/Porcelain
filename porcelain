@@ -52,6 +52,12 @@
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
 # - fix markers not displaying in links ("Fediverse on Wikipedia", "txtweb,...") in gemini://cadadr.space/blag-2021-03-05-hello.gmi
 
+# BUGS:
+# - 09:47 <op2> gemini://gemini.omarpolo.com/cgi/gempkg and open the first link, "search a package"
+#   09:47 <op2> it requests gemini://gemini.omarpolo.com/cgi/cgi/gempkg/search instead (note the double /cgi/ in the path)
+#   09:48 <op2> the original link in the document is `=> /cgi/gempkg/search'
+#   => might conflict with how vger resolves directories opened without trailint '/'
+
 use strict;
 use warnings;
 use feature 'unicode_strings';
@@ -70,7 +76,6 @@ use OpenBSD::Pledge;
 use OpenBSD::Unveil;
 use Pod::Usage;
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
-use utf8;			# TODO: really needed?
 
 my $url;
 my @history;
