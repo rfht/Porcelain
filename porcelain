@@ -81,6 +81,7 @@ my @forward_history;
 my %open_with;
 my @links;		# array containing links in the pages
 my $win;
+my $searchstr;		# search string
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
@@ -321,6 +322,18 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 	}
 }
 
+sub hlsearch {	# highlight search match
+	my $ret = $_[0];
+	if (defined $searchstr && $ret =~ /$searchstr/) {
+		addstr(substr($ret, 0, $-[0]));
+		attron(A_REVERSE);
+		addstr(substr($ret, $-[0], $+[0] - $-[0]));
+		attroff(A_REVERSE);
+		$ret = substr($ret, $+[0]);
+	}
+	return $ret;
+}
+
 sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted text (to outarray)
 	# call with "gmirender $viewfrom, $viewto, \@array"
 	my $hpos = $_[0];
@@ -341,32 +354,20 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			# TODO: handle alt text?
 			$line = substr $line, 3;
 			attrset(COLOR_PAIR(4));
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} elsif ($line =~ /^###/) {			# Heading 3
 			$line = substr $line, 3;
 			attrset(COLOR_PAIR(2));
 			attron(A_BOLD);
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} elsif ($line =~ /^##/) {			# Heading 2
 			$line = substr $line, 2;
 			attrset(COLOR_PAIR(2));
 			attron(A_BOLD);
 			attron(A_UNDERLINE);
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} elsif ($line =~ /^#/) {			# Heading 1
 			$line = substr $line, 1;
 			$line = center_text $line;
 			attrset(COLOR_PAIR(1));
 			attron(A_BOLD);
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} elsif ($line =~ /^=>/) {			# Link
 			# TODO: style links according to same domain vs. other gemini domains
 			$line = substr $line, 2;
@@ -388,34 +389,23 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			getyx($y, $x);
 			addstr($y, $x, $link_index . " ");
 			attron(A_UNDERLINE);
-			getyx($y, $x);
-			addstr($y, $x, join(" ", @line_split));
-			attroff(A_UNDERLINE);
-			move($y + 1, 0);
+			$line = join(" ", @line_split);
 		} elsif ($line =~ /^\* /) {			# Unordered List Item
 			$line =~ s/^\*/-/;
 			$t_list = 1;
 			attrset(COLOR_PAIR(2));
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} elsif ($line =~ /^\*\*/ && $t_list) {		# Continuation of List Item
 			$line =~ s/^\*\*/  /;
 			attrset(COLOR_PAIR(2));
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} elsif ($line =~ /^>/) {			# Quote
 			attrset(COLOR_PAIR(3));
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		} else {					# Text line
 			attrset(COLOR_PAIR(2));
-			getyx($y, $x);
-			addstr($y, $x, $line);
-			move($y + 1, 0);
 		}
+		$line = hlsearch $line;
+		addstr($line);
+		getyx($y, $x);
+		move($y + 1, 0);
 	}
 }
 
@@ -685,6 +675,9 @@ sub open_gemini {	# url
 				getch;
 				$update_viewport = 1;
 				clean_exit;
+			} elsif ($c eq '/') {
+				$searchstr = c_prompt_str("search: ");
+				$update_viewport = 1;
 			} elsif ( $c =~ /\d/ ) {
 				addch($LINES - 1, 0, $c);
 				if (scalar(@links) >= 10) {
