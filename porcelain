@@ -59,10 +59,10 @@ package Porcelain::Main;
 
 $main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
 
-use Crypt::OpenSSL::X509;
+#use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
-use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
+#use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
 use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
@@ -186,8 +186,7 @@ sub center_text {	# string --> string with leading space to position in center o
 	return (" " x $adjust) . $str;
 }
 
-# TODO: change this function name to 'absolute_url' to be clearer
-sub expand_url {	# current URL, new (potentially relative) URL -> new absolute URL
+sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
 	my $cururl = $_[0];
 	my $newurl = $_[1];
 	if (uri_class($newurl) eq 'relative') {
@@ -440,6 +439,7 @@ cleanup2:
 }
 
 sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
+=pod
 	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
 	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
 	my $common_name = $x509->subject();	# TODO: does $common_name match the domain?
@@ -488,6 +488,8 @@ sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
 		close $fh;
 		return 0;
 	}
+=cut
+	return 0;
 }
 
 sub downloader {	# $body --> 0: success, >0: failure
@@ -566,7 +568,6 @@ sub open_gemini {	# url
 				clean_exit "unable to open $url";
 			}
 		}
-		#push @back_history, $url;
 
 		gmiformat \@response, \@formatted, \@links;
 		my $displayrows = $LINES - 1;
@@ -608,7 +609,7 @@ sub open_gemini {	# url
 			} elsif ($c eq "F") {	# forward in history
 				if (scalar(@forward_history) > 0) {
 					push @back_history, $url;
-					$url = shift @forward_history;
+					$url = pop @forward_history;
 					return;
 				}
 			} elsif ($fn eq KEY_RESIZE) {
@@ -644,7 +645,8 @@ sub open_gemini {	# url
 					$viewfrom = $render_length - $displayrows - 1;
 				}
 			} elsif ($c eq 'o') {
-				$url = c_prompt_str("url: gemini://");	# TODO: allow relative links??
+				push @back_history, $url;	# save last url to back_history
+				$url = c_prompt_str("url: gemini://");	# TODO: allow relative links?? allow full link with 'gemini://'
 				$url = 'gemini://' . $url;
 				return;
 			} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
@@ -674,7 +676,7 @@ sub open_gemini {	# url
 					clean_exit "link number outside of range of current page: $c";
 				}
 				push @back_history, $url;	# save last url to back_history
-				$url = expand_url($url, $links[$c - 1]);
+				$url = url2absolute($url, $links[$c - 1]);
 				return;
 			}
 		}
@@ -686,7 +688,7 @@ sub open_gemini {	# url
 			die "ERROR: more than maximum number of $redirect_max redirects";
 		}
 		# TODO: allow option to ask for confirmation before all redirects
-		$url = expand_url($url, $meta);
+		$url = url2absolute($url, $meta);
 		if (not $url =~ m{^gemini://}) {
 			die "ERROR: cross-protocol redirects not allowed";	# TODO: instead ask for confirmation?
 		}
