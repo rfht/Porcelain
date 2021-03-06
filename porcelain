@@ -31,7 +31,6 @@
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
 # - add option for "Content Warning" type use of preformatted text and alt text:
 #	https://dragonscave.space/@devinprater/105782591455644854
-# - adjust output size when terminal is resized
 # - implement logging messages, warnings, errors to file
 # - center preformatted text? at least if marked as ascii art?
 # - add mouse support?!
@@ -579,6 +578,7 @@ sub open_gemini {	# url
 		my $render_length = scalar(@formatted);
 		my $update_viewport = 1;
 		while (1) {
+			$displayrows = $LINES - 1;
 			$viewto = min($viewfrom + $displayrows, $render_length - 1);
 			if ($update_viewport == 1) {
 				gmirender $viewfrom, $viewto, \@formatted, \@links;
@@ -586,9 +586,10 @@ sub open_gemini {	# url
 			}
 			$update_viewport = 0;
 			my ($c, $fn) = getchar;		# $fn: a function key, like arrow keys etc
-			if (defined $fn) {	# do this dance so that $c and $fn are not undefined
+			if (! defined $c) {	# do this dance so that $c and $fn are not undefined
 				$c = '';
-			} else {
+			}
+			if (! defined $fn) {
 				$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
 			}
 			if ($c eq 'H') {	# history
@@ -607,6 +608,8 @@ sub open_gemini {	# url
 					$url = $history[$history_pointer];
 					return;
 				}	# TODO: warn if trying to go back when at $history_pointer == 0?
+			} elsif ($fn eq KEY_RESIZE) {
+				$update_viewport = 1;
 			} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
 				if ($viewto < $render_length - 1) {
 					$update_viewport = 1;
