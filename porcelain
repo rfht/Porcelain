@@ -118,7 +118,7 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	} elsif ($_[0] =~ m{://}) {		# '' ==  unsupported protocol
 		return '';
 	} elsif ($_[0] =~ m{^/}) {
-		return 'relative';
+		return 'root';
 	} elsif ($_[0] =~ m{^[[:alnum:]]}) {
 		return 'relative';
 	} elsif ($_[0] =~ m{^\.}) {
@@ -212,7 +212,9 @@ sub center_text {	# string --> string with leading space to position in center o
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
 	my $cururl = $_[0];
 	my $newurl = $_[1];
-	if (uri_class($newurl) eq 'relative') {
+	if (uri_class($newurl) eq 'root') {
+		$newurl = "gemini://" . gem_host($cururl) . $newurl;
+	} elsif (uri_class($newurl) eq 'relative') {
 		my $curdir = $cururl;
 		if ($curdir =~ m{://.+/}) {
 			$curdir = substr($cururl, 0, rindex($cururl, '/'));
@@ -373,7 +375,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			my $li_num = $link_index;
 			$li_num =~ tr/\[\]//d;
 			$li_num = int($li_num - 1);	# zero based
-			if (uri_class($links[$li_num]) eq 'gemini' || uri_class($links[$li_num]) eq 'relative') {
+			if (uri_class($links[$li_num]) eq 'gemini' || uri_class($links[$li_num]) eq 'relative' || uri_class($links[$li_num]) eq 'root') {
 				attrset(COLOR_PAIR(5));	# cyan on black
 			} elsif (uri_class($links[$li_num]) eq 'gopher') {
 				attrset(COLOR_PAIR(6));	# magenta on black
