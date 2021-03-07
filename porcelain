@@ -20,7 +20,6 @@
 # - search "TODO" in comments
 # - import perl modules in mystuff/misc to ports
 # - check number of terminal columns and warn if too few (< 80) ?
-# - intercept Ctrl-C and properly exit when it's pressed
 # - limit size of history; can be configurable in whatever config approach is later chosen
 # - implement a hotkey to view history
 # - implement subscribed option
@@ -30,7 +29,6 @@
 # - add option for "Content Warning" type use of preformatted text and alt text:
 #	https://dragonscave.space/@devinprater/105782591455644854
 # - implement logging messages, warnings, errors to file
-# - center preformatted text? at least if marked as ascii art?
 # - add mouse support?!
 # - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
 # - implement 'N' to search backwards
@@ -42,7 +40,7 @@
 # - move documentation into porcelain.pod?
 # - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
 # - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
-# - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi
+# - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi - PARTIALLY; NEED TEMP PERMISSIONS
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
 # - refactor sub validate_cert
 # - implement client certs (for 6x codes)
@@ -52,7 +50,6 @@
 #   (currently viewport moves down when increasing COLs, and up when decreasing)
 # - add timeout to loading resources
 # - ?add test suite?
-# - implement STDERR logging to file
 # - use IO::Socket::SSL instead of Net::SSLeay? might simplify things
 
 use strict;
@@ -63,10 +60,9 @@ package Porcelain::Main;
 $main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
 
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
-#use Crypt::OpenSSL::X509;
+use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
-#use DateTime::Format::x509;	# TODO: lots of dependencies. Find a less bulky alternative.
 use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
@@ -88,6 +84,7 @@ my $win;
 my $status_win;
 my $searchstr = '';		# search string
 my @searchlns;		# lines with matches for search 
+my $r;		# responses to prompts
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
@@ -108,6 +105,7 @@ if (-e $hosts_file) {
 	close($fh);
 	@known_hosts = split('\n', $raw_hosts);
 }
+my $default_fp_algo = "SHA-512";
 
 sub clean_exit {
 	endwin;
@@ -479,58 +477,44 @@ cleanup2:
 	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
-sub validate_cert {	# certificate -> 0: ok, >= 1: ERROR
-=pod
+sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
+	# TODO: add optional notBefore/notAfter checks
+	# TODO: allow temporarily accepting new/changed certificates?
 	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
+	my $domainname = $_[1];
 	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
-	my $common_name = $x509->subject();	# TODO: does $common_name match the domain?
-	my $f = DateTime::Format::x509->new();
-	if (DateTime->today() < $f->parse_datetime($x509->notBefore())) {
-	        return 1;	# cert is not yet valid
-	}
-	if (DateTime->today() > $f->parse_datetime($x509->notAfter())) {
-	        return 1;	# cert has expired
-	}
-	if (scalar(grep(/^$common_name/, @known_hosts)) > 0) {
+	#if (grep /^$domainname\s+([^\s]+)\s+([^\s]+)$/, @known_hosts) {
+	if (my @match = grep /^$domainname/, @known_hosts) {	# TODO: the following assumes there is only one match
 		# cert is known, does cert still match (TOFU)?
-		my $local_cert;
-		my $found_cert = 0;
-		my $cert_body = 0;
-		# TODO: check the stored expiration date? see gemini://gemini.circumlunar.space/docs/specification.gmi
-		foreach (@known_hosts) {
-			if ($_ eq $common_name) {
-				$found_cert = 1;
-			}
-			if (not $found_cert) {
-				next;
-			}
-			if ($_ eq '-----BEGIN CERTIFICATE-----') {
-				$cert_body = 1;
-			}
-			if ($cert_body) {
-				$local_cert .= $_;
-				if ($_ eq '-----END CERTIFICATE-----') {
-					last;
-				}
+		my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-512), $fp: fingerprint
+		if ($fp_algo eq "SHA-512") {
+			if ($x509->fingerprint_sha512() eq $fp) {
+				return undef;
+			} else {
+				return "fingerprint mismatch";
 			}
 		}
-		$PEM = join('', split("\n", $PEM));
-		if ($local_cert eq $PEM) {
-			return 0;
-		} else {
-			return 1;
-		}
-	} else {
-		# Host is not known. TOFU: add to $hosts_file
-		open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
-		$fh->say($common_name);
-		$fh->say($x509->notAfter());
-		$fh->print($PEM);
-		close $fh;
-		return 0;
+		return "unsupported fingerprint algorithm: $fp_algo";
 	}
-=cut
-	return 0;
+	# TODO: allow config setting to automatically accept unknown hosts without prompt
+	$r = '';
+	until ($r =~ /^[SsAa]$/) {
+		$r = c_warn "Unknown host: $domainname. [S]ave to known_hosts and continue, or [A]bort?";
+	}
+	if ($r =~ /^[Aa]$/) {
+		return "Unknown host: $domainname, user aborted";
+	}
+	# New Host. add to @known_hosts and write to $hosts_file
+	open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
+	if ($default_fp_algo eq "SHA-512") {
+		my $kh_line = $domainname . ' ' . $default_fp_algo . ' ' . $x509->fingerprint_sha512();
+		push @known_hosts, $kh_line;
+		$fh->print($kh_line . "\n");
+		close $fh;
+		return undef;
+	}
+	close $fh;
+	return "unsupported fingerprint algorithm: $default_fp_algo";
 }
 
 sub downloader {	# $body --> 0: success, >0: failure
@@ -730,7 +714,16 @@ sub open_gemini {	# url
 	if (not defined $server_cert) {
 		die "no certificate received from server";
 	}
-	validate_cert($server_cert) && clean_exit "Error while checking server certificate";
+	if ($r = validate_cert($server_cert, $domain)) {
+		my $last_r = $r;
+		undef $r;
+		do {
+			$r = c_err "Error validating cert: $last_r. [C]ontinue anyway, or [A]bort?";
+		} until ($r =~ /^[CcAa]$/);
+		if ($r =~ /^[Aa]$/) {
+			clean_exit;
+		}
+	}
 
 	# TODO: enforce <META>: UTF-8 encoded, max 1024 bytes
 	my @response =	lines(decode('UTF-8', $raw_response));	# TODO: allow non-UTF8 encodings?
@@ -739,7 +732,6 @@ sub open_gemini {	# url
 	chomp $meta;
 
 	my $status = substr $full_status, 0, 1;
-	my $r;		# responses to prompts
 	$url =~ s/[^[:print:]]//g;
 	$meta =~ s/[^[:print:]]//g;
 	if ($status != 3) {
@@ -766,10 +758,10 @@ sub open_gemini {	# url
 				close $fh;
 			} else {
 				$r = '';
-				until ($r =~ /[YyNn]/) {
+				until ($r =~ /^[YyNn]$/) {
 					$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
 				}
-				if ($r eq 'y') {
+				if ($r =~ /^[Yy]$/) {
 					downloader(join("\n", @response)) && c_warn "Download of $url failed!";
 				}
 			}
