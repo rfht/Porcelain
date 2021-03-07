@@ -263,7 +263,7 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 sub fmtline {
 	my ($line, $outarray, $extra, $p1, $p2) = @_;
 	my $prefix = $p1 || '';
-	my $cols = $COLS + $extra - 2;
+	my $cols = $COLS + $extra;
 
 	if (mbswidth($line) + $extra > $cols) {
 		$Text::Wrap::columns = $cols;
@@ -318,11 +318,11 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 					$line = $link_descr;
 				}
 				my $p = "=>[" . $num_links . "] ";
-				fmtline($line, $outarray, length($p) - 2, $p, '=>' . ' ' x (length($p) - 2));
+				fmtline($line, $outarray, length($p) - 4, $p, '=>' . ' ' x (length($p) - 2));
 			} elsif ($line =~ /^\* /) {		# Unordered List
-				fmtline($line =~ s/^\*\s+//r, $outarray, 2, '* ', '**');
+				fmtline($line =~ s/^\*\s+//r, $outarray, 0, '* ', '**');
 			} elsif ($line =~ /^>/) {		# Quote
-				fmtline($line =~ s/^>\s*//r, $outarray, 2, '> ');
+				fmtline($line =~ s/^>\s*//r, $outarray, 0, '> ');
 			} else {				# Regular Text
 				fmtline($line =~ s/^\s*//r, $outarray, 0);
 			}
