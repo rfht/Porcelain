@@ -46,6 +46,8 @@
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
 # - refactor sub validate_cert
 # - implement client certs (for 6x codes)
+# - add option to view raw text/gemini (or other?) file
+# - fix newline in SYNOPSIS to separate different syntax
 
 use strict;
 use warnings;
@@ -150,10 +152,8 @@ sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
 	echo;
-	curs_set(1);
 	my $s = getstring($prompt_win);
 	noecho;
-	curs_set(0);
 	delwin($prompt_win);
 	return $s;
 }
@@ -164,10 +164,9 @@ sub c_prompt_ch {	# Curses prompt for char: prompt char --> user char
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
 	echo;
-	curs_set(1);
 	my $c = getchar($prompt_win);
+	flushinp;
 	noecho;
-	curs_set(0);
 	delwin($prompt_win);
 	return $c;
 }
@@ -188,10 +187,8 @@ sub c_warn {	# Curses warning: prompt char, can be any key --> user char
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
 	echo;
-	curs_set(1);
 	my $c = getchar($prompt_win);
 	noecho;
-	curs_set(0);
 	delwin($prompt_win);
 	return $c;
 }
@@ -202,10 +199,8 @@ sub c_err {	# Curses error: prompt char, can be any key --> user char
 	addstr($prompt_win, $_[0]);
 	refresh($prompt_win);
 	echo;
-	curs_set(1);
 	my $c = getchar($prompt_win);
 	noecho;
-	curs_set(0);
 	delwin($prompt_win);
 	return $c;
 }
@@ -252,7 +247,6 @@ sub gem_host {
 }
 
 sub sep {	# gmi string containing whitespace --> ($first, $rest)
-	# TODO: is leading whitespace allowed in the spec at all?
 	my $first =	$_[0] =~ s/[[:blank:]].*$//r;
 	my $rest =	$_[0] =~ s/^[^[:blank:]]*[[:blank:]]*//r;
 	return ($first, $rest);
@@ -269,11 +263,11 @@ sub lines {	# multi-line text scalar --> $first_line / @lines
 sub fmtline {
 	my ($line, $outarray, $extra, $p1, $p2) = @_;
 	my $prefix = $p1 || '';
-	my $cols = $COLS - $extra;
+	my $cols = $COLS + $extra - 2;
 
 	if (mbswidth($line) + $extra > $cols) {
 		$Text::Wrap::columns = $cols;
-		$line = wrap($p1 || '', $p2 || '', $line);
+		$line = wrap($p1 || '', $p2 || $p1 || '', $line);
 		push @$outarray, split("\n", $line);
 	} else {
 		push @$outarray, $prefix . $line;	# needed to not kill empty lines
@@ -1050,15 +1044,7 @@ Go forward in browsing history.
 
 =item n
 
-Next page in directory.
-
-=item p
-
-Previous page in directory.
-
-=item u
-
-Go up in the directory hierarchy.
+Next matching text.
 
 =item r
 
