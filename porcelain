@@ -558,19 +558,25 @@ sub page_nav {
 	my @formatted;
 	undef @links;
 
-	gmiformat $content, \@formatted, \@links;
-	my $displayrows = $LINES - 1;
 	my $viewfrom = 0;	# top line to be shown
-	my $viewto;
-	my $render_length = scalar(@formatted);
-	my $update_viewport = 1;
+	my $render_length;
+	my $update_viewport;
+	my $reflow_text = 1;
 
 	while (1) {
-		$displayrows = $LINES - 1;
-		$viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if (defined $status_win) {
 			delwin($status_win);
 		}
+
+		if ($reflow_text) {
+			$reflow_text = 0;
+			$update_viewport = 1;
+			gmiformat $content, \@formatted, \@links;
+			$render_length = scalar(@formatted);
+		}
+
+		my $displayrows = $LINES - 1;
+		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
 			gmirender $viewfrom, $viewto, \@formatted, \@links;
 			refresh($win);
@@ -611,7 +617,7 @@ sub page_nav {
 				return;
 			}
 		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
-			$update_viewport = 1;
+			$reflow_text = 1;
 		} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
 			if ($viewto < $render_length - 1) {
 				$update_viewport = 1;
