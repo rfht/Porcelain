@@ -34,7 +34,7 @@
 # - center preformatted text? at least if marked as ascii art?
 # - add mouse support?!
 # - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
-# - implement '/' key for search
+# - implement 'N' and '?' to search backwards
 # - implement 'u' to go up in directory hierarchy, and another key to go to the root of the current domain
 # - implement '|' to pipe to external programs (like espeak)
 # - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
@@ -46,12 +46,6 @@
 # - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
 # - refactor sub validate_cert
-
-# BUGS:
-# - 09:47 <op2> gemini://gemini.omarpolo.com/cgi/gempkg and open the first link, "search a package"
-#   09:47 <op2> it requests gemini://gemini.omarpolo.com/cgi/cgi/gempkg/search instead (note the double /cgi/ in the path)
-#   09:48 <op2> the original link in the document is `=> /cgi/gempkg/search'
-#   => might conflict with how vger resolves directories opened without trailint '/'
 
 use strict;
 use warnings;
@@ -325,12 +319,14 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 
 sub hlsearch {	# highlight search match
 	my $ret = $_[0];
-	if (defined $searchstr && $ret =~ /$searchstr/) {
-		addstr(substr($ret, 0, $-[0]));
-		attron(A_REVERSE);
-		addstr(substr($ret, $-[0], $+[0] - $-[0]));
-		attroff(A_REVERSE);
-		$ret = substr($ret, $+[0]);
+	if (length($searchstr) > 0) {
+		while ($ret =~ /$searchstr/) {
+			addstr(substr($ret, 0, $-[0]));
+			attron(A_REVERSE);
+			addstr(substr($ret, $-[0], $+[0] - $-[0]));
+			attroff(A_REVERSE);
+			$ret = substr($ret, $+[0]);
+		}
 	}
 	return $ret;
 }
