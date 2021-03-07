@@ -48,6 +48,9 @@
 # - implement client certs (for 6x codes)
 # - add option to view raw text/gemini (or other?) file
 # - fix newline in SYNOPSIS to separate different syntax
+# - fix $reflow_text, $update_viewport mechanics in sub page_nav to keep viewport at stable position
+#   (currently viewport moves down when increasing COLs, and up when decreasing)
+# - add timeout to loading resources
 
 use strict;
 use warnings;
