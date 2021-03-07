@@ -81,7 +81,8 @@ my @forward_history;
 my %open_with;
 my @links;		# array containing links in the pages
 my $win;
-my $searchstr;		# search string
+my $searchstr = '';		# search string
+my @searchlns;		# lines with matches for search 
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
@@ -518,6 +519,27 @@ sub downloader {	# $body --> 0: success, >0: failure
 	return 0;
 }
 
+sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $displayrows, $render_length --> new $viewfrom
+	my ($sequence, $fromln, $rows, $render_length) = @_; 
+	if (scalar(@$sequence) < 1) {
+		c_prompt_ch "No matches.";
+		return undef;
+	} else {
+		my $centerline = $fromln + int(($rows + 1) / 2);
+		if ($centerline >= ${$sequence}[-1]) {	# wrap to beginning of document
+			$fromln = max(${$sequence}[0] - int(($rows + 1) / 2), 0);
+		} else {
+			foreach (@$sequence) {
+				if ($_ > $centerline) {
+					$fromln = min($_ - int(($rows + 1) / 2), $render_length - $rows - 1);
+					last;
+				}
+			}
+		}
+		return $fromln;
+	}
+}
+
 # TODO: separate subs for gemini protocol and text/gemini resource
 sub open_gemini {	# url
 	my $domain = gem_host($_[0]);
@@ -664,6 +686,12 @@ sub open_gemini {	# url
 					$update_viewport = 1;
 					$viewfrom = $render_length - $displayrows - 1;
 				}
+			} elsif ($c eq 'n') {
+				my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
+				if (defined $viewfrom_new) {
+					$viewfrom = $viewfrom_new;
+				}
+				$update_viewport = 1;
 			} elsif ($c eq 'o') {
 				push @back_history, $url;	# save last url to back_history
 				$url = c_prompt_str("url: gemini://");	# TODO: allow relative links?? allow full link with 'gemini://'
@@ -677,6 +705,11 @@ sub open_gemini {	# url
 				clean_exit;
 			} elsif ($c eq '/') {
 				$searchstr = c_prompt_str("search: ");
+				@searchlns = grep { $formatted[$_] =~ /$searchstr/ } 0..$#formatted;
+				my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
+				if (defined $viewfrom_new) {
+					$viewfrom = $viewfrom_new;
+				}
 				$update_viewport = 1;
 			} elsif ( $c =~ /\d/ ) {
 				addch($LINES - 1, 0, $c);
