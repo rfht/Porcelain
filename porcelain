@@ -53,6 +53,7 @@
 # - add timeout to loading resources
 # - ?add test suite?
 # - implement STDERR logging to file
+# - use IO::Socket::SSL instead of Net::SSLeay? might simplify things
 
 use strict;
 use warnings;
