@@ -24,7 +24,6 @@
 # - limit size of history; can be configurable in whatever config approach is later chosen
 # - implement a hotkey to view history
 # - implement subscribed option
-# - display 1 and only 1 empty line after all headings?
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
@@ -55,6 +54,7 @@ package Porcelain::Main;
 
 $main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
 
+use Any::URI::Escape;		# to handle percent encoding (uri_escape())
 #use Crypt::OpenSSL::X509;
 use Curses;
 use DateTime;
@@ -66,7 +66,8 @@ require Net::SSLeay;
 use OpenBSD::Pledge;
 use OpenBSD::Unveil;
 use Pod::Usage;
-use Any::URI::Escape;		# to handle percent encoding (uri_escape())
+use Text::CharWidth qw(mbswidth);
+use Text::Wrap;
 
 use open ':encoding(UTF-8)';
 
@@ -282,7 +283,13 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 		}
 		if ($t_preform) {	# preformatted text. Don't mess it up.
 			# TODO: Truncate to $COLS? This breaks hexdsl.co.uk ASCII art. use e.g. pad to allow lateral scrolling?
-			push @$outarray, "```" . $_;
+			my $line = $_;
+			if (mbswidth($line) > $COLS) {
+				$Text::Wrap::columns = $COLS;
+				$line = wrap('', '', $line);
+				$line = (split("\n", $line))[0];
+			}
+			push @$outarray, "```" . $line;
 		} else {
 			# TODO: transform tabs into single space?
 			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?
@@ -306,7 +313,7 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 					$line = $link_descr;
 				}
 				my $p = "=>[" . $num_links . "] ";
-				fmtline($line, $outarray, length($p)-2, $p);
+				fmtline($line, $outarray, length($p) - 2, $p, '=>' . ' ' x (length($p) - 2));
 			} elsif ($line =~ /^\* /) {		# Unordered List
 				fmtline($line =~ s/^\*\s+//r, $outarray, 2, '* ', '**');
 			} elsif ($line =~ /^>/) {		# Quote
@@ -364,9 +371,9 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 		} elsif ($line =~ /^#/) {			# Heading 1
 			$line = substr $line, 1;
 			$line = center_text $line;
-			attrset(COLOR_PAIR(1));
+			attrset(COLOR_PAIR(2));
 			attron(A_BOLD);
-		} elsif ($line =~ /^=>/) {			# Link
+		} elsif ($line =~ /^=>\[/) {			# Link
 			# TODO: style links according to same domain vs. other gemini domains
 			$line = substr $line, 2;
 			my @line_split = split(" ", $line);
@@ -386,6 +393,11 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			addstr(hlsearch($link_index . " "));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
 			attron(A_UNDERLINE);
 			$line = join(" ", @line_split);
+		} elsif ($line =~ /^=>(\s+)(.*)$/) {		# Continuation of Link
+			attroff(A_UNDERLINE);
+			addstr($1);
+			attron(A_UNDERLINE);
+			$line = $2;
 		} elsif ($line =~ /^\* /) {			# Unordered List Item
 			$line =~ s/^\*/-/;
 			$t_list = 1;
