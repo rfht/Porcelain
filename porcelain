@@ -77,6 +77,7 @@ my @forward_history;
 my %open_with;
 my @links;		# array containing links in the pages
 my $win;
+my $status_win;
 my $searchstr = '';		# search string
 my @searchlns;		# lines with matches for search 
 
@@ -169,6 +170,16 @@ sub c_prompt_ch {	# Curses prompt for char: prompt char --> user char
 	curs_set(0);
 	delwin($prompt_win);
 	return $c;
+}
+
+sub c_statusline {	# Curses status line. Stays until refresh. Status text --> undef
+	if (defined $status_win) {
+		delwin($status_win);
+	}
+	$status_win = newwin(0, 0, $LINES - 1, 0);
+	bkgd($status_win, COLOR_PAIR(2) | A_REVERSE);
+	addstr($status_win, $_[0]);
+	refresh($status_win);
 }
 
 sub c_warn {	# Curses warning: prompt char, can be any key --> user char
@@ -282,7 +293,7 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 			next;
 		}
 		if ($t_preform) {	# preformatted text. Don't mess it up.
-			# TODO: Truncate to $COLS? This breaks hexdsl.co.uk ASCII art. use e.g. pad to allow lateral scrolling?
+			# TODO: use e.g. pad to allow lateral scrolling?
 			my $line = $_;
 			if (mbswidth($line) > $COLS) {
 				$Text::Wrap::columns = $COLS;
@@ -622,6 +633,9 @@ sub open_gemini {	# url
 		while (1) {
 			$displayrows = $LINES - 1;
 			$viewto = min($viewfrom + $displayrows, $render_length - 1);
+			if (defined $status_win) {
+				delwin($status_win);
+			}
 			if ($update_viewport == 1) {
 				gmirender $viewfrom, $viewto, \@formatted, \@links;
 				refresh($win);
@@ -719,13 +733,13 @@ sub open_gemini {	# url
 				}
 				$update_viewport = 1;
 			} elsif ( $c =~ /\d/ ) {
-				addch($LINES - 1, 0, $c);
+				c_statusline "open link: $c - " . $links[$c-1];
 				if (scalar(@links) >= 10) {
-					# TODO: allow infinitely long digits by using do ... while? https://www.perlmonks.org/?node_id=282322
 					timeout(500);
 					my $keypress = getch;
 					if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {	# ignore non-digit input
 						$c .= $keypress;
+						c_statusline "open link: $c - " . $links[$c-1];
 						if (scalar(@links) >= 100) {	# supports up to 999 links in a page
 							undef $keypress;
 							my $keypress = getch;
@@ -737,8 +751,11 @@ sub open_gemini {	# url
 					timeout(-1);
 				}
 				unless ($c <= scalar(@links)) {
-					clean_exit "link number outside of range of current page: $c";
+					delwin($status_win);
+					c_err "link number outside of range of current page: $c";
+					return;
 				}
+				c_statusline "open link: $c - " . $links[$c-1];
 				push @back_history, $url;	# save last url to back_history
 				$url = url2absolute($url, $links[$c - 1]);
 				return;
@@ -832,6 +849,7 @@ sub open_custom {
 sub open_url {
 	# TODO: read from %open_with, open with 'gemini' protocol or other modality
 	# TODO: then determine the resource MIME type and call appropriate resource sub
+	c_statusline "Loading $url ...";
 	if (uri_class($_[0]) eq 'gemini') {
 		open_gemini $_[0];
 	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
@@ -1014,13 +1032,9 @@ Display browsing history.
 
 Open a new link (prompts for link)
 
-=item Alt-H
-
-Return to home page.
-
 =item I
 
-Print infos (mostly for debugging).
+Print info.
 
 =item q
 
@@ -1030,7 +1044,7 @@ Quit the application.
 
 Go back in browsing history.
 
-=item Shift+Backspace/Ctrl-L
+=item Ctrl-L
 
 Go forward in browsing history.
 
