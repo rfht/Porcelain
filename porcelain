@@ -51,6 +51,8 @@
 # - fix $reflow_text, $update_viewport mechanics in sub page_nav to keep viewport at stable position
 #   (currently viewport moves down when increasing COLs, and up when decreasing)
 # - add timeout to loading resources
+# - ?add test suite?
+# - implement STDERR logging to file
 
 use strict;
 use warnings;
