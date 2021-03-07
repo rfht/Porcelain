@@ -219,6 +219,12 @@ sub center_text {	# string --> string with leading space to position in center o
 	return (" " x $adjust) . $str;
 }
 
+sub caught_sigint {
+	clean_exit "Caught SIGINT - aborting...";
+}
+
+$SIG{INT} = \&caught_sigint;
+
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
 	my $cururl = $_[0];
 	my $newurl = $_[1];
