@@ -34,7 +34,7 @@
 # - center preformatted text? at least if marked as ascii art?
 # - add mouse support?!
 # - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
-# - implement 'N' and '?' to search backwards
+# - implement 'N' to search backwards
 # - implement 'u' to go up in directory hierarchy, and another key to go to the root of the current domain
 # - implement '|' to pipe to external programs (like espeak)
 # - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
@@ -46,6 +46,7 @@
 # - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
 # - refactor sub validate_cert
+# - implement client certs (for 6x codes)
 
 use strict;
 use warnings;
@@ -320,7 +321,7 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 sub hlsearch {	# highlight search match
 	my $ret = $_[0];
 	if (length($searchstr) > 0) {
-		while ($ret =~ /$searchstr/) {
+		while ($ret =~ /$searchstr/i) {
 			addstr(substr($ret, 0, $-[0]));
 			attron(A_REVERSE);
 			addstr(substr($ret, $-[0], $+[0] - $-[0]));
@@ -382,9 +383,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			} else {	# not sure what this is linking to
 				attrset(COLOR_PAIR(2));
 			}
-			attroff(A_BOLD);
-			getyx($y, $x);
-			addstr($y, $x, $link_index . " ");
+			addstr(hlsearch($link_index . " "));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
 			attron(A_UNDERLINE);
 			$line = join(" ", @line_split);
 		} elsif ($line =~ /^\* /) {			# Unordered List Item
@@ -701,7 +700,7 @@ sub open_gemini {	# url
 				clean_exit;
 			} elsif ($c eq '/') {
 				$searchstr = c_prompt_str("search: ");
-				@searchlns = grep { $formatted[$_] =~ /$searchstr/ } 0..$#formatted;
+				@searchlns = grep { $formatted[$_] =~ /$searchstr/i } 0..$#formatted;
 				my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
 				if (defined $viewfrom_new) {
 					$viewfrom = $viewfrom_new;
