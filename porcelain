@@ -415,6 +415,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 		} else {					# Text line
 			attrset(COLOR_PAIR(2));
 		}
+		$line = encode('UTF-8', $line);
 		$line = hlsearch $line;
 		addstr($line);
 		getyx($y, $x);
@@ -552,6 +553,151 @@ sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $di
 	}
 }
 
+sub page_nav {
+	my ($content) = @_;
+	my @formatted;
+	undef @links;
+
+	gmiformat $content, \@formatted, \@links;
+	my $displayrows = $LINES - 1;
+	my $viewfrom = 0;	# top line to be shown
+	my $viewto;
+	my $render_length = scalar(@formatted);
+	my $update_viewport = 1;
+
+	while (1) {
+		$displayrows = $LINES - 1;
+		$viewto = min($viewfrom + $displayrows, $render_length - 1);
+		if (defined $status_win) {
+			delwin($status_win);
+		}
+		if ($update_viewport == 1) {
+			gmirender $viewfrom, $viewto, \@formatted, \@links;
+			refresh($win);
+		}
+		$update_viewport = 0;
+		my ($c, $fn) = getchar;		# $fn: a function key, like arrow keys etc
+		if (! defined $c) {	# do this dance so that $c and $fn are not undefined
+			$c = '';
+		}
+		if (! defined $fn) {
+			$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
+		}
+		if ($c eq 'H') {	# show history
+			my $histwin = c_fullscr join("\n", $url . " <-- CURRENT URL", reverse(@back_history)), "History";
+			undef $c;
+			$c = getchar;
+			delwin($histwin);
+			$update_viewport = 1;
+		} elsif ($c eq 'I') {	# info
+			my $linesfrom = $viewfrom + 1;
+			my $linesto = $viewto + 1;
+			my $linespercent = int($linesto / $render_length * 100);
+			c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
+			$update_viewport = 1;
+		} elsif ($c eq 'q') {	# quit
+			undef $url;
+			return;
+		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
+			if (scalar(@back_history) > 0) {
+				push @forward_history, $url;
+				$url = pop @back_history;
+				return;
+			}
+		} elsif ($c eq "\cL") {	# forward in history
+			if (scalar(@forward_history) > 0) {
+				push @back_history, $url;
+				$url = pop @forward_history;
+				return;
+			}
+		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
+			$update_viewport = 1;
+		} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
+			if ($viewto < $render_length - 1) {
+				$update_viewport = 1;
+				$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
+			}
+		} elsif ($c eq 'b' || $fn == KEY_PPAGE) {
+			if ($viewfrom > 0) {
+				$update_viewport = 1;
+				$viewfrom = max($viewfrom - $displayrows, 0);
+			}
+		} elsif ($c eq 'j' || $fn == KEY_DOWN) {
+			if ($viewto < $render_length - 1) {
+				$update_viewport = 1;
+				$viewfrom++;
+			}
+		} elsif ($c eq 'k' || $fn == KEY_UP) {
+			if ($viewfrom > 0) {
+				$update_viewport = 1;
+				$viewfrom--;
+			}
+		} elsif ($c eq 'K' || $fn == KEY_HOME) {
+			if ($viewfrom > 0) {
+				$update_viewport = 1;
+				$viewfrom = 0;
+			}
+		} elsif ($c eq 'J' || $fn == KEY_END) {
+			if ($viewto < $render_length - 1) {
+				$update_viewport = 1;
+				$viewfrom = $render_length - $displayrows - 1;
+			}
+		} elsif ($c eq 'n') {
+			my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
+			if (defined $viewfrom_new) {
+				$viewfrom = $viewfrom_new;
+			}
+			$update_viewport = 1;
+		} elsif ($c eq 'o') {
+			push @back_history, $url;	# save last url to back_history
+			$url = c_prompt_str("url: gemini://");	# TODO: allow relative links?? allow full link with 'gemini://'
+			$url = 'gemini://' . $url;
+			return;
+		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
+			my $s = c_prompt_str(": ");
+			addstr(0, 0, "You typed: " . $s);
+			getch;
+			$update_viewport = 1;
+			clean_exit;
+		} elsif ($c eq '/') {
+			$searchstr = c_prompt_str("search: ");
+			@searchlns = grep { $formatted[$_] =~ /$searchstr/i } 0..$#formatted;
+			my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
+			if (defined $viewfrom_new) {
+				$viewfrom = $viewfrom_new;
+			}
+			$update_viewport = 1;
+		} elsif ( $c =~ /\d/ ) {
+			c_statusline "open link: $c - " . $links[$c-1];
+			if (scalar(@links) >= 10) {
+				timeout(500);
+				my $keypress = getch;
+				if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {	# ignore non-digit input
+					$c .= $keypress;
+					c_statusline "open link: $c - " . $links[$c-1];
+					if (scalar(@links) >= 100) {	# supports up to 999 links in a page
+						undef $keypress;
+						my $keypress = getch;
+						if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {
+							$c .= $keypress;
+						}
+					}
+				}
+				timeout(-1);
+			}
+			unless ($c <= scalar(@links)) {
+				delwin($status_win);
+				c_err "link number outside of range of current page: $c";
+				return;
+			}
+			c_statusline "open link: $c - " . $links[$c-1];
+			push @back_history, $url;	# save last url to back_history
+			$url = url2absolute($url, $links[$c - 1]);
+			return;
+		}
+	}
+}
+
 # TODO: separate subs for gemini protocol and text/gemini resource
 sub open_gemini {	# url
 	my $domain = gem_host($_[0]);
@@ -575,8 +721,6 @@ sub open_gemini {	# url
 	chomp $meta;
 
 	my $status = substr $full_status, 0, 1;
-	my @formatted;		# array of rendered lines
-	undef @links;
 	my $r;		# responses to prompts
 	$url =~ s/[^[:print:]]//g;
 	$meta =~ s/[^[:print:]]//g;
@@ -598,7 +742,7 @@ sub open_gemini {	# url
 		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
 			# check if extension in %open_with
 			my $f_ext = $url =~ s/.*\././r;
-			if (defined $open_with{$f_ext}) {
+			if (defined $open_with{$f_ext}) {	# TODO: check MIME type primarily; suffix as fallback
 				open(my $fh, '|-', "$open_with{$f_ext}") or c_warn "Error opening pipe to ogg123: $!";
 				print $fh join("\n", @response) or clean_exit "error writing to pipe";
 				close $fh;
@@ -617,144 +761,7 @@ sub open_gemini {	# url
 				clean_exit "unable to open $url";
 			}
 		}
-
-		gmiformat \@response, \@formatted, \@links;
-		my $displayrows = $LINES - 1;
-		my $viewfrom = 0;	# top line to be shown
-		my $viewto;
-		my $render_length = scalar(@formatted);
-		my $update_viewport = 1;
-		while (1) {
-			$displayrows = $LINES - 1;
-			$viewto = min($viewfrom + $displayrows, $render_length - 1);
-			if (defined $status_win) {
-				delwin($status_win);
-			}
-			if ($update_viewport == 1) {
-				gmirender $viewfrom, $viewto, \@formatted, \@links;
-				refresh($win);
-			}
-			$update_viewport = 0;
-			my ($c, $fn) = getchar;		# $fn: a function key, like arrow keys etc
-			if (! defined $c) {	# do this dance so that $c and $fn are not undefined
-				$c = '';
-			}
-			if (! defined $fn) {
-				$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
-			}
-			if ($c eq 'H') {	# show history
-				my $histwin = c_fullscr join("\n", $url . " <-- CURRENT URL", reverse(@back_history)), "History";
-				undef $c;
-				$c = getchar;
-				delwin($histwin);
-				$update_viewport = 1;
-			} elsif ($c eq 'I') {	# info
-				my $linesfrom = $viewfrom + 1;
-				my $linesto = $viewto + 1;
-				my $linespercent = int($linesto / $render_length * 100);
-				c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
-				$update_viewport = 1;
-			} elsif ($c eq 'q') {	# quit
-				undef $url;
-				return;
-			} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
-				if (scalar(@back_history) > 0) {
-					push @forward_history, $url;
-					$url = pop @back_history;
-					return;
-				}
-			} elsif ($c eq "\cL") {	# forward in history
-				if (scalar(@forward_history) > 0) {
-					push @back_history, $url;
-					$url = pop @forward_history;
-					return;
-				}
-			} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
-				$update_viewport = 1;
-			} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
-				if ($viewto < $render_length - 1) {
-					$update_viewport = 1;
-					$viewfrom = min($viewfrom + $displayrows, $render_length - $displayrows - 1);
-				}
-			} elsif ($c eq 'b' || $fn == KEY_PPAGE) {
-				if ($viewfrom > 0) {
-					$update_viewport = 1;
-					$viewfrom = max($viewfrom - $displayrows, 0);
-				}
-			} elsif ($c eq 'j' || $fn == KEY_DOWN) {
-				if ($viewto < $render_length - 1) {
-					$update_viewport = 1;
-					$viewfrom++;
-				}
-			} elsif ($c eq 'k' || $fn == KEY_UP) {
-				if ($viewfrom > 0) {
-					$update_viewport = 1;
-					$viewfrom--;
-				}
-			} elsif ($c eq 'K' || $fn == KEY_HOME) {
-				if ($viewfrom > 0) {
-					$update_viewport = 1;
-					$viewfrom = 0;
-				}
-			} elsif ($c eq 'J' || $fn == KEY_END) {
-				if ($viewto < $render_length - 1) {
-					$update_viewport = 1;
-					$viewfrom = $render_length - $displayrows - 1;
-				}
-			} elsif ($c eq 'n') {
-				my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
-				if (defined $viewfrom_new) {
-					$viewfrom = $viewfrom_new;
-				}
-				$update_viewport = 1;
-			} elsif ($c eq 'o') {
-				push @back_history, $url;	# save last url to back_history
-				$url = c_prompt_str("url: gemini://");	# TODO: allow relative links?? allow full link with 'gemini://'
-				$url = 'gemini://' . $url;
-				return;
-			} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
-				my $s = c_prompt_str(": ");
-				addstr(0, 0, "You typed: " . $s);
-				getch;
-				$update_viewport = 1;
-				clean_exit;
-			} elsif ($c eq '/') {
-				$searchstr = c_prompt_str("search: ");
-				@searchlns = grep { $formatted[$_] =~ /$searchstr/i } 0..$#formatted;
-				my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
-				if (defined $viewfrom_new) {
-					$viewfrom = $viewfrom_new;
-				}
-				$update_viewport = 1;
-			} elsif ( $c =~ /\d/ ) {
-				c_statusline "open link: $c - " . $links[$c-1];
-				if (scalar(@links) >= 10) {
-					timeout(500);
-					my $keypress = getch;
-					if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {	# ignore non-digit input
-						$c .= $keypress;
-						c_statusline "open link: $c - " . $links[$c-1];
-						if (scalar(@links) >= 100) {	# supports up to 999 links in a page
-							undef $keypress;
-							my $keypress = getch;
-							if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {
-								$c .= $keypress;
-							}
-						}
-					}
-					timeout(-1);
-				}
-				unless ($c <= scalar(@links)) {
-					delwin($status_win);
-					c_err "link number outside of range of current page: $c";
-					return;
-				}
-				c_statusline "open link: $c - " . $links[$c-1];
-				push @back_history, $url;	# save last url to back_history
-				$url = url2absolute($url, $links[$c - 1]);
-				return;
-			}
-		}
+		return page_nav \@response
 	} elsif ($status == 3) {	# 3x: REDIRECT
 		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
 		chomp $url;
