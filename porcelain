@@ -745,14 +745,12 @@ sub page_nav {
 }
 
 # TODO: separate subs for gemini protocol and text/gemini resource
-sub open_gemini {	# url, certpath (optional)
-	my $domain = gem_host($_[0]);
-	my $certpath = undef;
-	if (defined $_[1]) {
-		$certpath = $_[1];
-	}
+sub open_gemini {	# url, certpath (optional), keypath (optional)
+	my ($resource, $certpath, $keypath) = @_;
+	my $domain = gem_host($resource);
+	# TODO: warn/error if $certpath but not $keypath
 
-	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n", $certpath);	# has to end with CRLF ('\r\n')
+	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
 	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
@@ -774,9 +772,6 @@ sub open_gemini {	# url, certpath (optional)
 	# TODO: enforce <META>: UTF-8 encoded, max 1024 bytes
 	my @response =	lines(decode('UTF-8', $raw_response));	# TODO: allow non-UTF8 encodings?
 	my $header =	shift @response;
-	if ($certpath) {
-		clean_exit $header;
-	}
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 	chomp $meta;
 
@@ -875,25 +870,16 @@ sub open_gemini {	# url, certpath (optional)
 			clean_exit;
 		}
 	} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
-		# TODO: implement
 		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
-		#
-		# STEPS:
-		# - create client private key client.key.pem if not existent: openssl genrsa -out client.key.pem 4096
-		# # -- create private key + cert with: 'openssl req -newkey rsa:2048 -nodes -keyout test.key -x509 -days 1 -out test.crt -subj "/"'
-		# - create client CSR client.csr: openssl req -new -key client.key.pem -out client.csr
-		# - create the certificate client.cert.pem: openssl x509 -req -in client.csr -passin file:mypass.enc -CA /.../tls/intermediate/certs/ca-chain-bundle.cert.pem -CAkey ... -out client.cert.pem -CAcreateserial -days 365 -sha256 -extfile client_cert_ext.cnf
-		# Lagrange uses "identities", that is a new private key for every cert
-		#c_err "CLIENT CERTIFICATE REQUIRED - This is not implemented yet.";
-		$r = c_prompt_str "Please enter name of client certificate to continue: ";
-		my $chosen_cert = $idents_dir . "/" . $r . ".key";
-		if (-e $chosen_cert) {
-			open_gemini($url, $chosen_cert);
+		c_prompt_ch $meta;
+		$r = c_prompt_str "Please enter identity to continue: ";
+		my $crt_key = $idents_dir . "/" . $r;
+		if (-e $crt_key . ".crt" && -e $crt_key . ".key") {
+			open_gemini($url, $crt_key . ".crt", $crt_key . ".key");
 		} else {
-			c_err "Certificate $r.crt not found!";
+			c_err "Identity $r not found!";
 		}
-		clean_exit "Done.";
 	} else {
 		die "Invalid status code in response";
 	}
