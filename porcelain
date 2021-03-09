@@ -58,6 +58,7 @@
 # - make it possible to use ':port' in URL like with gemini://rawtext.club:1965/~sloum/spacewalk.gmi
 # - get OpenSSL version string with: print (Net::SSLeay::SSLeay_version() . "\n");
 # - store protocol version with my $rv = Net::SSLeay::get_version($ssl); => can use to check TLSv1.3
+# - fix underscore in front of link label, see gemini://astrobotany.mozz.us
 
 use strict;
 use warnings;
@@ -360,9 +361,9 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 				fmtline($line =~ s/^##\s*//r, $outarray, 0, '##');
 			} elsif ($line =~ /^#\s*[\s]/) {	# Heading 1
 				fmtline($line =~ s/^#\s*//r, $outarray, 0, '#');
-			} elsif ($line =~ /^=>\s/) {		# Link
+			} elsif ($line =~ /^=>/) {		# Link
 				$num_links++;
-				$line =~ s/^=>\s+//;
+				$line =~ s/^=>\s*//;
 				my ($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
 				if ($link_descr =~ /^\s*$/) {	# if $link_descr is empty, use $link_url
@@ -744,12 +745,14 @@ sub page_nav {
 }
 
 # TODO: separate subs for gemini protocol and text/gemini resource
-sub open_gemini {	# url
+sub open_gemini {	# url, certpath (optional)
 	my $domain = gem_host($_[0]);
+	my $certpath = undef;
+	if (defined $_[1]) {
+		$certpath = $_[1];
+	}
 
-	# sslcat request
-	# TODO: avoid sslcat if viewing local file
-	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n");	# has to end with CRLF ('\r\n')
+	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$_[0]\r\n", $certpath);	# has to end with CRLF ('\r\n')
 	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
@@ -771,6 +774,9 @@ sub open_gemini {	# url
 	# TODO: enforce <META>: UTF-8 encoded, max 1024 bytes
 	my @response =	lines(decode('UTF-8', $raw_response));	# TODO: allow non-UTF8 encodings?
 	my $header =	shift @response;
+	if ($certpath) {
+		clean_exit $header;
+	}
 	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
 	chomp $meta;
 
@@ -881,7 +887,13 @@ sub open_gemini {	# url
 		# Lagrange uses "identities", that is a new private key for every cert
 		#c_err "CLIENT CERTIFICATE REQUIRED - This is not implemented yet.";
 		$r = c_prompt_str "Please enter name of client certificate to continue: ";
-		clean_exit;
+		my $chosen_cert = $idents_dir . "/" . $r . ".key";
+		if (-e $chosen_cert) {
+			open_gemini($url, $chosen_cert);
+		} else {
+			c_err "Certificate $r.crt not found!";
+		}
+		clean_exit "Done.";
 	} else {
 		die "Invalid status code in response";
 	}
