@@ -489,7 +489,7 @@ sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs
 	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_new') or !$ctx;
 	Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL);
 	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_set_options');
-	warn "Cert `$crt_path' given without key" if $crt_path && !$key_path;
+	#warn "Cert `$crt_path' given without key" if $crt_path && !$key_path;
 	Net::SSLeay::set_cert_and_key($ctx, $crt_path, $key_path) if $crt_path;
 	$ssl = Net::SSLeay::new($ctx);
 	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_new') or !$ssl;
@@ -872,8 +872,6 @@ sub open_gemini {	# url
 		# TODO: implement
 		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
-		# https://www.golinuxcloud.com/openssl-create-client-server-certificate/
-		# https://docs.microfocus.com/SM/9.60/Codeless/Content/security/concepts/example_generating_a_client_certificate_with_openssl.htm
 		#
 		# STEPS:
 		# - create client private key client.key.pem if not existent: openssl genrsa -out client.key.pem 4096
@@ -881,7 +879,8 @@ sub open_gemini {	# url
 		# - create client CSR client.csr: openssl req -new -key client.key.pem -out client.csr
 		# - create the certificate client.cert.pem: openssl x509 -req -in client.csr -passin file:mypass.enc -CA /.../tls/intermediate/certs/ca-chain-bundle.cert.pem -CAkey ... -out client.cert.pem -CAcreateserial -days 365 -sha256 -extfile client_cert_ext.cnf
 		# Lagrange uses "identities", that is a new private key for every cert
-		c_err "CLIENT CERTIFICATE REQUIRED - This is not implemented yet.";
+		#c_err "CLIENT CERTIFICATE REQUIRED - This is not implemented yet.";
+		$r = c_prompt_str "Please enter name of client certificate to continue: ";
 		clean_exit;
 	} else {
 		die "Invalid status code in response";
