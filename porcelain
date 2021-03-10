@@ -623,21 +623,19 @@ cleanup2:
 sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
 	# TODO: add optional notBefore/notAfter checks
 	# TODO: allow temporarily accepting new/changed certificates?
-	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
 	my $domainname = $_[1];
-	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
 	foreach (@known_hosts) {
-		if (substr($_, length($domainname)) eq $domainname) {
-			($kh_domain, $kh_algo, $kh_serv_hash, $kh_oob_hash, $kh_oob_source, $kh_oob_date) = split ' ', $_;
+		my $this_host = $_;
+		if (substr($this_host, 0, length($domainname)) eq $domainname) {
+			($kh_domain, $kh_algo, $kh_serv_hash, $kh_oob_hash, $kh_oob_source, $kh_oob_date) = split " ", $this_host;
 			last;
 		}
 	}
-	#if (my @match = grep /^$domainname/, @known_hosts) {	# TODO: the following assumes there is only one match
 	if ($kh_serv_hash) {
 		# cert is known, does cert still match (TOFU)?
 		#my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
 		if ($kh_algo eq "SHA-256") {
-			if (lc($x509->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
+			if (lc($url_cert->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
 				return undef;
 			} else {
 				return "fingerprint mismatch";
@@ -656,7 +654,7 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 	# New Host. add to @known_hosts and write to $hosts_file
 	open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
 	if ($default_fp_algo eq "SHA-256") {
-		my $kh_line = $domainname . ' ' . $default_fp_algo . ' ' . lc($x509->fingerprint_sha256() =~ tr/://dr);
+		my $kh_line = $domainname . ' ' . $default_fp_algo . ' ' . lc($url_cert->fingerprint_sha256() =~ tr/://dr);
 		push @known_hosts, $kh_line;
 		$fh->print($kh_line . "\n");
 		close $fh;
@@ -709,10 +707,9 @@ sub page_nav {
 	my $reflow_text = 1;
 
 	my $domainname = gem_host($url);
-	my $x509 = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($url_cert));
 	#my $oob_line;
 	#foreach (@oob_tb) {
-		#if (substr($_, length($domain)) eq $domain) {
+		#if (substr($_, 0, length($domain)) eq $domain) {
 			#$oob_line = $_;
 			#last;
 		#}
@@ -767,20 +764,20 @@ sub page_nav {
 			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $url);
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
-			push @info, "\t\t\tSubject:\t\t" . $x509->subject();
-			#push @info, "\t\t\tSubject Hash:\t\t" . $x509->hash();
-			push @info, "\t\t\tEmail:\t\t\t" . $x509->email();
-			push @info, "\t\t\tIssuer:\t\t\t" . $x509->issuer();
-			#push @info, "\t\t\tIssuer Hash:\t" . $x509->issuer_hash();
-			push @info, "\t\t\tNot Valid Before:\t" . $x509->notBefore();
-			push @info, "\t\t\tNot Valid After:\t" . $x509->notAfter();
-			#push @info, "\t\t\tModulus:\t\t" . $x509->modulus();		# TODO: how useful is modulus? Exponent?
-			#push @info, "\t\t\tExponent:\t\t" . $x509->exponent();
-			push @info, "\t\t\tFingerprint SHA-256:\n\t\t\t" . $x509->fingerprint_sha256(); # TODO: improve formatting
-			push @info, "\t\t\tCertificate Version:\t" . $x509->version();
-			push @info, "\t\t\tSignature Algorithm:\t" . $x509->sig_alg_name();
-			push @info, "\t\t\tPublic Key Algorithm:\t" . $x509->key_alg_name();
-			if ($x509->is_selfsigned()) {
+			push @info, "\t\t\tSubject:\t\t" . $url_cert->subject();
+			#push @info, "\t\t\tSubject Hash:\t\t" . $url_cert->hash();
+			push @info, "\t\t\tEmail:\t\t\t" . $url_cert->email();
+			push @info, "\t\t\tIssuer:\t\t\t" . $url_cert->issuer();
+			#push @info, "\t\t\tIssuer Hash:\t" . $url_cert->issuer_hash();
+			push @info, "\t\t\tNot Valid Before:\t" . $url_cert->notBefore();
+			push @info, "\t\t\tNot Valid After:\t" . $url_cert->notAfter();
+			#push @info, "\t\t\tModulus:\t\t" . $url_cert->modulus();		# TODO: how useful is modulus? Exponent?
+			#push @info, "\t\t\tExponent:\t\t" . $url_cert->exponent();
+			push @info, "\t\t\tFingerprint SHA-256:\n\t\t\t" . $url_cert->fingerprint_sha256(); # TODO: improve formatting
+			push @info, "\t\t\tCertificate Version:\t" . $url_cert->version();
+			push @info, "\t\t\tSignature Algorithm:\t" . $url_cert->sig_alg_name();
+			push @info, "\t\t\tPublic Key Algorithm:\t" . $url_cert->key_alg_name();
+			if ($url_cert->is_selfsigned()) {
 				push @info, "\t\t\tSelf-signed?\t\tYes";
 			} else {
 				push @info, "\t\t\tSelf-signed?:\t\tNo";
@@ -791,7 +788,7 @@ sub page_nav {
 			#} else {
 				#push @info, "OOB Verification:\tNot Found";
 			#}
-			push @info, "\n\n" . Porcelain::RandomArt->randomart($x509->fingerprint_sha256());
+			push @info, "\n\n" . Porcelain::RandomArt->randomart($url_cert->fingerprint_sha256());
 			my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
@@ -951,6 +948,8 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 	if (not defined $url_cert) {
 		die "no certificate received from server";
 	}
+	# Transform $url_cert into usable format for Crypt::OpenSSL::X509
+	$url_cert = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($url_cert));
 	if ($r = validate_cert($url_cert, $domain)) {
 		my $last_r = $r;
 		undef $r;
