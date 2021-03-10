@@ -749,18 +749,27 @@ sub page_nav {
 			# ask for SHA-256, manual confirmation, or URL
 			undef $r;
 			until ($r) {
-				#$r = c_prompt_str "Enter SHA-256, URL (for third-party verification), or [M] for manual mode: ";
 				$r = c_pad_str "Enter SHA-256, URL (for third-party verification), or [M] for manual mode: ";
 			}
 			chomp $r;
 			$r = lc $r;
 			if ($r eq "m") {			# manual mode
 				clean_exit "v: manual mode";
+				# TODO: show SHA-256 and Porcelain::RandomArt->randomart(lc($sha256 =~ tr/://dr)) to user
+				#	ask user if it matches 
+				#	then store the $sha256 (from the server) in oob_tb/oob_file
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
 				clean_exit "v: SHA-256";
+				# TODO: compare user-entered SHA-256 to the one from the server.
+				#	If it matches, should turn green (or stay green).
+				#	If it doesn't match, show warning/error, and ask if user is sure that key entered is correct
+				#	If entered key is correct, host will now be red
+				#	If was not correct or not sure, offer entry of a new key or bail out and stay yellow
+				#	Store host and user-entered SHA-256 if A) match, or B) confirmed correct key with mismatch
+				#	otherwise, remove entry; staying yellow
 			} elsif (not $r =~ /\s/) {		# URL	# TODO: refine?
-				# TODO: implement
-				clean_exit "v: URL";
+				# TODO: implement fetching an SHA-256, pubkey (other?)
+				clean_exit "Third-party OOB verification not yet implemented; URL provided: $r";
 			} else {
 				clean_exit "Invalid response: $r";
 			}
