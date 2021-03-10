@@ -754,10 +754,9 @@ sub page_nav {
 			}
 			chomp $r;
 			$r = lc $r;
-			clean_exit $r;
 			if ($r eq "m") {			# manual mode
 				clean_exit "v: manual mode";
-			} elsif ($r =~ /^[0-9a-f]{64}$/) {	# SHA-256
+			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
 				clean_exit "v: SHA-256";
 			} elsif (not $r =~ /\s/) {		# URL	# TODO: refine?
 				# TODO: implement
