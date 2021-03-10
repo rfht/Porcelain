@@ -90,6 +90,7 @@ use Text::Wrap;
 use open ':encoding(UTF-8)';
 
 my $url;
+my $url_cert;
 my @back_history;
 my @forward_history;
 my %open_with;
@@ -605,7 +606,7 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
 	my $domainname = $_[1];
 	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
-	#if (grep /^$domainname\s+([^\s]+)\s+([^\s]+)$/, @known_hosts) {
+	# TODO: domainname may include special regex characters, like '.'. Rather use substr(...) eq
 	if (my @match = grep /^$domainname/, @known_hosts) {	# TODO: the following assumes there is only one match
 		# cert is known, does cert still match (TOFU)?
 		my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
@@ -722,8 +723,7 @@ sub page_nav {
 		} elsif ($c eq 'I') {	# advanced info
 			# 1: domain
 			# 2: resource ($url with "gemini://" + domain stripped
- 			# 3: server cert
-			# 4: SHA-256 of server cert
+			# 3: server cert info
 			# 5: locally stored SHA-256 (or other hash or full pubkey)
 			# 6: match of server and stored cert?
 			# 7: out-of-band verification
@@ -732,8 +732,27 @@ sub page_nav {
 			#	- time since last renewal
 			my $domainname = gem_host($url);
 			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $url);
-			push @info, "Server Cert:\t\tX";
-			push @info, "Server SHA-256:\t\tX";
+			my $x509 = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($url_cert));
+			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
+			push @info, "Server Cert:";
+			push @info, "\t\t\tSubject:\t\t" . $x509->subject();
+			#push @info, "\t\t\tSubject Hash:\t\t" . $x509->hash();
+			push @info, "\t\t\tEmail:\t\t\t" . $x509->email();
+			push @info, "\t\t\tIssuer:\t\t\t" . $x509->issuer();
+			#push @info, "\t\t\tIssuer Hash:\t" . $x509->issuer_hash();
+			push @info, "\t\t\tNot Valid Before:\t" . $x509->notBefore();
+			push @info, "\t\t\tNot Valid After:\t" . $x509->notAfter();
+			#push @info, "\t\t\tModulus:\t\t" . $x509->modulus();		# TODO: how useful is modulus? Exponent?
+			#push @info, "\t\t\tExponent:\t\t" . $x509->exponent();
+			push @info, "\t\t\tFingerprint SHA-256:\n\t\t\t" . $x509->fingerprint_sha256(); # TODO: improve formatting
+			push @info, "\t\t\tCertificate Version:\t" . $x509->version();
+			push @info, "\t\t\tSignature Algorithm:\t" . $x509->sig_alg_name();
+			push @info, "\t\t\tPublic Key Algorithm:\t" . $x509->key_alg_name();
+			if ($x509->is_selfsigned()) {
+				push @info, "\t\t\tSelf-signed?\t\tYes";
+			} else {
+				push @info, "\t\t\tSelf-signed?:\t\tNo";
+			}
 			if (my @match = grep /^$domainname/, @oob_tb) {
 				push @info, "OOB Verification:\tFound";
 				# TODO: add OOB Match, OOB Date
@@ -773,7 +792,7 @@ sub page_nav {
 				clean_exit "v: manual mode";
 				# TODO: show SHA-256 and Porcelain::RandomArt->randomart(lc($sha256 =~ tr/://dr)) to user
 				#	ask user if it matches 
-				#	then store the $sha256 (from the server) in oob_tb/oob_file
+				#	then store the $sha256 (from $url_cert) in oob_tb/oob_file
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
 				clean_exit "v: SHA-256";
 				# TODO: compare user-entered SHA-256 to the one from the server.
@@ -896,15 +915,16 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 	my $domain = gem_host($resource);
 	# TODO: warn/error if $certpath but not $keypath
 
-	(my $raw_response, my $err, my $server_cert)= sslcat_custom($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
+	undef $url_cert;
+	(my $raw_response, my $err, $url_cert)= sslcat_custom($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
 	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
 	}
-	if (not defined $server_cert) {
+	if (not defined $url_cert) {
 		die "no certificate received from server";
 	}
-	if ($r = validate_cert($server_cert, $domain)) {
+	if ($r = validate_cert($url_cert, $domain)) {
 		my $last_r = $r;
 		undef $r;
 		do {
