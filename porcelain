@@ -873,8 +873,23 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
 		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
 		c_prompt_ch $meta;
-		$r = c_prompt_str "Please enter identity to continue: ";
-		my $crt_key = $idents_dir . "/" . $r;
+		# check what identities exist
+		opendir my $dh, $idents_dir or die "Could not open '$idents_dir' for reading: $!\n";
+		my @ident_files = grep(/\.crt$/, readdir($dh));	# read only .crt files; each should have a matching .key
+		closedir $dh;
+		my $sha;
+		# TODO: link an identity to a resource (and all paths underneath it)
+		if (scalar(@ident_files) == 0) {
+			$r = c_prompt_ch "Identity has been requested, but none found. Create new certificate for $url? [Y/n]";
+			if ($r =~ /^[Yy]$/) {
+				$sha = gen_identity 30;	# TODO: ask for certificate lifetime
+			} else {
+				clean_exit "No certificate; aborting.";
+			}
+		} else {
+			$sha = c_prompt_str "Please enter identity to continue: ";
+		}
+		my $crt_key = $idents_dir . "/" . $sha;
 		if (-e $crt_key . ".crt" && -e $crt_key . ".key") {
 			open_gemini($url, $crt_key . ".crt", $crt_key . ".key");
 		} else {
