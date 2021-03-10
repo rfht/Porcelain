@@ -64,6 +64,8 @@
 # - use newpad with $max_vrows and $max_vcols rather than simple window for the display
 # - make sure not suring getstr, inchstr, instr because of potential for buffer overflow attacks; see https://metacpan.org/pod/Curses
 # - make sure to escape dots and other RE chars in all uses of grep
+# - investigate segfaults, e.g. 61		   start = win->_line[y].text; in wclear, when leaving Info page
+# - turn the lower-case SHA-256 without ':' into a sub
 
 use strict;
 use warnings;
@@ -132,20 +134,30 @@ if (-e $hosts_file) {
 	close($fh);
 	@known_hosts = split('\n', $raw_hosts);
 }
-my $oob_file = $porcelain_dir . "/oob";		# oob: data on out-of-band verification
-my @oob_tb;
-if (-e $oob_file) {
-	my $raw_oob;
-	open(my $fh, '<', $oob_file) or die "cannot open $oob_file";
-	{
-		local $/;
-		$raw_oob = <$fh>;
-	}
-	close($fh);
-	@oob_tb = split("\n", $raw_oob);
-}
+# known_hosts entries
+my $kh_domain;		# domain in known_hosts
+my $kh_algo;		# hash algorithm of known_hosts entry (e.g. SHA-256)
+my $kh_serv_hash;	# hash of the known server pubkey
+my $kh_oob_hash;	# hash from out-of-band source
+my $kh_oob_source;	# source of out-of-band hash
+my $kh_oob_date;	# date of last out-of-band update
+
+#my $oob_file = $porcelain_dir . "/oob";		# oob: data on out-of-band verification
+#my @oob_tb;
+#if (-e $oob_file) {
+	#my $raw_oob;
+	#open(my $fh, '<', $oob_file) or die "cannot open $oob_file";
+	#{
+		#local $/;
+		#$raw_oob = <$fh>;
+	#}
+	#close($fh);
+	#@oob_tb = split("\n", $raw_oob);
+#}
 
 sub clean_exit {
+	delwin($win);
+	delwin($title_win);
 	endwin;
 	if ($_[0]) {
 		print $_[0] . "\n";
@@ -180,14 +192,12 @@ sub gen_client_cert {	# days for cert validity, private key --> return cert
 	return $x509;
 }
 
+# TODO: delete?
 sub oob {	# ouf-of-band identity verification
 	# modes:
 	#	1. user enters SHA-256 (or other?)			=> 'user_hash' + SHA-256 + date
 	#	2. user manually compares; confirms match with yes/no	=> 'user_yn' + SHA-256 (copied from server at the time of confirmation) + date
 	#	3. pubkey or hash obtained from third-party		=> resource (e.g. trust list address) + SHA-256 + date
-
-	# table:
-	# <domain> <last_server_sha256> <oob_source> <last_confirmation_date> <last_confirmation_sha256>
 }
 
 # TODO: merge store_privkey and store_cert into same function
@@ -309,10 +319,11 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 	refresh($status_win);
 }
 
-sub c_title_win {	# modify $title_win
+sub c_title_win {	# modify $title_win. in: domainname
+	my ($addr) = @_;
 	bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
 	clear($title_win);
-	addstr($title_win, "PAGE TITLE");
+	addstr($title_win, $addr);
 	refresh($title_win);
 }
 
@@ -615,18 +626,24 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 	my $PEM = Net::SSLeay::PEM_get_string_X509($_[0]);
 	my $domainname = $_[1];
 	my $x509 = Crypt::OpenSSL::X509->new_from_string($PEM);
-	# TODO: domainname may include special regex characters, like '.'. Rather use substr(...) eq
-	if (my @match = grep /^$domainname/, @known_hosts) {	# TODO: the following assumes there is only one match
+	foreach (@known_hosts) {
+		if (substr($_, length($domainname)) eq $domainname) {
+			($kh_domain, $kh_algo, $kh_serv_hash, $kh_oob_hash, $kh_oob_source, $kh_oob_date) = split ' ', $_;
+			last;
+		}
+	}
+	#if (my @match = grep /^$domainname/, @known_hosts) {	# TODO: the following assumes there is only one match
+	if ($kh_serv_hash) {
 		# cert is known, does cert still match (TOFU)?
-		my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
-		if ($fp_algo eq "SHA-256") {
-			if ($x509->fingerprint_sha256() eq $fp) {
+		#my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
+		if ($kh_algo eq "SHA-256") {
+			if (lc($x509->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
 				return undef;
 			} else {
 				return "fingerprint mismatch";
 			}
 		}
-		return "unsupported fingerprint algorithm: $fp_algo";
+		return "unsupported fingerprint algorithm: $kh_algo";
 	}
 	# TODO: allow config setting to automatically accept unknown hosts without prompt
 	$r = '';
@@ -639,7 +656,7 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 	# New Host. add to @known_hosts and write to $hosts_file
 	open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
 	if ($default_fp_algo eq "SHA-256") {
-		my $kh_line = $domainname . ' ' . $default_fp_algo . ' ' . $x509->fingerprint_sha256();
+		my $kh_line = $domainname . ' ' . $default_fp_algo . ' ' . lc($x509->fingerprint_sha256() =~ tr/://dr);
 		push @known_hosts, $kh_line;
 		$fh->print($kh_line . "\n");
 		close $fh;
@@ -691,12 +708,23 @@ sub page_nav {
 	my $update_viewport;
 	my $reflow_text = 1;
 
+	my $domainname = gem_host($url);
+	my $x509 = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($url_cert));
+	#my $oob_line;
+	#foreach (@oob_tb) {
+		#if (substr($_, length($domain)) eq $domain) {
+			#$oob_line = $_;
+			#last;
+		#}
+	#}
+	#my ($oob_domain, $oob_mode, $oob_user_sha, $oob_server_sha, $oob_last_check_date) = split ' ', $oob_line;
+
 	while (1) {
 		if (defined $status_win) {
 			clear($status_win);
 			delwin($status_win);
 		}
-		c_title_win;
+		c_title_win $url;
 
 		if ($reflow_text) {
 			$reflow_text = 0;
@@ -732,18 +760,11 @@ sub page_nav {
 			c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
 			$update_viewport = 1;
 		} elsif ($c eq 'I') {	# advanced info
-			# 1: domain
-			# 2: resource ($url with "gemini://" + domain stripped
-			# 3: server cert info
-			# 5: locally stored SHA-256 (or other hash or full pubkey)
-			# 6: match of server and stored cert?
 			# 7: out-of-band verification
 			#	- type
 			#	- date last renewed
 			#	- time since last renewal
-			my $domainname = gem_host($url);
 			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $url);
-			my $x509 = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($url_cert));
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
 			push @info, "\t\t\tSubject:\t\t" . $x509->subject();
@@ -764,12 +785,13 @@ sub page_nav {
 			} else {
 				push @info, "\t\t\tSelf-signed?:\t\tNo";
 			}
-			if (my @match = grep /^$domainname/, @oob_tb) {
-				push @info, "OOB Verification:\tFound";
+			#if (my @match = grep /^$domainname/, @oob_tb) {
+				#push @info, "OOB Verification:\tFound";
 				# TODO: add OOB Match, OOB Date
-			} else {
-				push @info, "OOB Verification:\tNot Found";
-			}
+			#} else {
+				#push @info, "OOB Verification:\tNot Found";
+			#}
+			push @info, "\n\n" . Porcelain::RandomArt->randomart($x509->fingerprint_sha256());
 			my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
@@ -780,18 +802,12 @@ sub page_nav {
 			return;
 		} elsif ($c eq 'v') {	# verify server identity
 			my $domain = gem_host $url;
-			my $oob_line = undef;
-			foreach (@oob_tb) {
-				if (substr($_, length($domain)) eq $domain) {
-					$oob_line = $_;
-				}
-			}
-			if ($oob_line) {	# update_oob mode
+			#if ($oob_line) {	# update_oob mode
 				# TODO: warn if there already exists an entry in $oob_tb
 				# TODO: implement
-				$r = c_prompt_ch "Already existing OOB record for $domain dated " . (split(" ", $oob_line))[3] . ". Update? [yn] ";
-				return if lc($r) eq "y";
-			}
+				#$r = c_prompt_ch "Already existing OOB record for $domain dated " . (split(" ", $oob_line))[3] . ". Update? [yn] ";
+				#return if lc($r) eq "y";
+			#}
 			# ask for SHA-256, manual confirmation, or URL
 			undef $r;
 			until ($r) {
