@@ -63,6 +63,7 @@
 # - c_prompt_str - enable backspace, arrow key navigation, cursor?
 # - use newpad with $max_vrows and $max_vcols rather than simple window for the display
 # - make sure not suring getstr, inchstr, instr because of potential for buffer overflow attacks; see https://metacpan.org/pod/Curses
+# - make sure to escape dots and other RE chars in all uses of grep
 
 use strict;
 use warnings;
@@ -729,6 +730,21 @@ sub page_nav {
 			#	- type
 			#	- date last renewed
 			#	- time since last renewal
+			my $domainname = gem_host($url);
+			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $url);
+			push @info, "Server Cert:\t\tX";
+			push @info, "Server SHA-256:\t\tX";
+			if (my @match = grep /^$domainname/, @oob_tb) {
+				push @info, "OOB Verification:\tFound";
+				# TODO: add OOB Match, OOB Date
+			} else {
+				push @info, "OOB Verification:\tNot Found";
+			}
+			my $infowin = c_fullscr join("\n", @info), "Info";
+			undef $c;
+			$c = getchar;
+			delwin($infowin);
+			$update_viewport = 1;
 		} elsif ($c eq 'q') {	# quit
 			undef $url;
 			return;
