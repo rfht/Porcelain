@@ -96,6 +96,7 @@ my @forward_history;
 my %open_with;
 my @links;		# array containing links in the pages
 my $win;
+my $title_win;
 my $status_win;
 my $searchstr = '';		# search string
 my @searchlns;		# lines with matches for search 
@@ -308,6 +309,9 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 	refresh($status_win);
 }
 
+sub c_title_win {	# modify $title_win
+}
+
 sub c_warn {	# Curses warning: prompt char, can be any key --> user char
 	my $prompt_win = newwin(0,0,$LINES - 1, 0);
 	bkgd($prompt_win, COLOR_PAIR(1) | A_REVERSE);
@@ -487,7 +491,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 	my $y;
 	my $x;
 	clear;
-	move(0, 0);
+	move(1, 0);	# keep space for title_win
 	while ($hpos <= $hstop) {
 		$line = ${$inarray}[$hpos++];
 		if ($t_list && not $line =~ /^\*\*/) {
@@ -1151,21 +1155,21 @@ Net::SSLeay::initialize();	# initialize ssl library once
 
 # Curses init
 if (not $opt_dump) {
-    initscr;
-    start_color;	# TODO: check if (has_colors)
-    $win = newwin(0,0,0,0);
-    noecho;
-    nonl;
-    cbreak;
-    keypad(1);
-    curs_set(0);
-    init_pair(1, COLOR_YELLOW, COLOR_BLACK);
-    init_pair(2, COLOR_WHITE, COLOR_BLACK);
-    init_pair(3, COLOR_BLUE, COLOR_BLACK);
-    init_pair(4, COLOR_GREEN, COLOR_BLACK);
-    init_pair(5, COLOR_CYAN, COLOR_BLACK);
-    init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
-    init_pair(7, COLOR_RED, COLOR_WHITE);
+	initscr;
+	start_color;	# TODO: check if (has_colors)
+	$win = newwin(0,0,0,0);
+	noecho;
+	nonl;
+	cbreak;
+	keypad(1);
+	curs_set(0);
+	init_pair(1, COLOR_YELLOW, COLOR_BLACK);
+	init_pair(2, COLOR_WHITE, COLOR_BLACK);
+	init_pair(3, COLOR_BLUE, COLOR_BLACK);
+	init_pair(4, COLOR_GREEN, COLOR_BLACK);
+	init_pair(5, COLOR_CYAN, COLOR_BLACK);
+	init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
+	init_pair(7, COLOR_RED, COLOR_WHITE);
 }
 
 if ($opt_pledge) {
