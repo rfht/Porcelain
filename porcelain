@@ -310,6 +310,10 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 }
 
 sub c_title_win {	# modify $title_win
+	bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
+	clear($title_win);
+	addstr($title_win, "PAGE TITLE");
+	refresh($title_win);
 }
 
 sub c_warn {	# Curses warning: prompt char, can be any key --> user char
@@ -471,10 +475,10 @@ sub hlsearch {	# highlight search match
 	my $ret = $_[0];
 	if (length($searchstr) > 0) {
 		while ($ret =~ /$searchstr/i) {
-			addstr(substr($ret, 0, $-[0]));
-			attron(A_REVERSE);
-			addstr(substr($ret, $-[0], $+[0] - $-[0]));
-			attroff(A_REVERSE);
+			addstr($win, substr($ret, 0, $-[0]));
+			attron($win, A_REVERSE);
+			addstr($win, substr($ret, $-[0], $+[0] - $-[0]));
+			attroff($win, A_REVERSE);
 			$ret = substr($ret, $+[0]);
 		}
 	}
@@ -490,8 +494,8 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 	my $t_list = 0;	# toggle list
 	my $y;
 	my $x;
-	clear;
-	move(1, 0);	# keep space for title_win
+	clear($win);
+	move($win, 0, 0);	# keep space for title_win
 	while ($hpos <= $hstop) {
 		$line = ${$inarray}[$hpos++];
 		if ($t_list && not $line =~ /^\*\*/) {
@@ -500,21 +504,21 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 		if ($line =~ /^```/) {				# Preformatted
 			# TODO: handle alt text?
 			$line = substr $line, 3;
-			attrset(COLOR_PAIR(4));
+			attrset($win, COLOR_PAIR(4));
 		} elsif ($line =~ /^###/) {			# Heading 3
 			$line = substr $line, 3;
-			attrset(COLOR_PAIR(2));
-			attron(A_BOLD);
+			attrset($win, COLOR_PAIR(2));
+			attron($win, A_BOLD);
 		} elsif ($line =~ /^##/) {			# Heading 2
 			$line = substr $line, 2;
-			attrset(COLOR_PAIR(2));
-			attron(A_BOLD);
-			attron(A_UNDERLINE);
+			attrset($win, COLOR_PAIR(2));
+			attron($win, A_BOLD);
+			attron($win, A_UNDERLINE);
 		} elsif ($line =~ /^#/) {			# Heading 1
 			$line = substr $line, 1;
 			$line = center_text $line;
-			attrset(COLOR_PAIR(2));
-			attron(A_BOLD);
+			attrset($win, COLOR_PAIR(2));
+			attron($win, A_BOLD);
 		} elsif ($line =~ /^=>\[/) {			# Link
 			# TODO: style links according to same domain vs. other gemini domains
 			$line = substr $line, 2;
@@ -524,40 +528,41 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			$li_num =~ tr/\[\]//d;
 			$li_num = int($li_num - 1);	# zero based
 			if (uri_class($links[$li_num]) eq 'gemini' || uri_class($links[$li_num]) eq 'relative' || uri_class($links[$li_num]) eq 'root') {
-				attrset(COLOR_PAIR(5));	# cyan on black
+				attrset($win, COLOR_PAIR(5));	# cyan on black
 			} elsif (uri_class($links[$li_num]) eq 'gopher') {
-				attrset(COLOR_PAIR(6));	# magenta on black
+				attrset($win, COLOR_PAIR(6));	# magenta on black
 			} elsif (substr(uri_class($links[$li_num]), 0, 4) eq 'http') {
-				attrset(COLOR_PAIR(1));	# yellow on black
+				attrset($win, COLOR_PAIR(1));	# yellow on black
 			} else {	# not sure what this is linking to
-				attrset(COLOR_PAIR(2));
+				attrset($win, COLOR_PAIR(2));
 			}
-			addstr(hlsearch($link_index . " "));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
-			attron(A_UNDERLINE);
+			addstr($win, hlsearch($link_index . " "));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
+			attron($win, A_UNDERLINE);
 			$line = join(" ", @line_split);
 		} elsif ($line =~ /^=>(\s+)(.*)$/) {		# Continuation of Link
-			attroff(A_UNDERLINE);
-			addstr($1);
-			attron(A_UNDERLINE);
+			attroff($win, A_UNDERLINE);
+			addstr($win, $1);
+			attron($win, A_UNDERLINE);
 			$line = $2;
 		} elsif ($line =~ /^\* /) {			# Unordered List Item
 			$line =~ s/^\*/-/;
 			$t_list = 1;
-			attrset(COLOR_PAIR(2));
+			attrset($win, COLOR_PAIR(2));
 		} elsif ($line =~ /^\*\*/ && $t_list) {		# Continuation of List Item
 			$line =~ s/^\*\*/  /;
-			attrset(COLOR_PAIR(2));
+			attrset($win, COLOR_PAIR(2));
 		} elsif ($line =~ /^>/) {			# Quote
-			attrset(COLOR_PAIR(3));
+			attrset($win, COLOR_PAIR(3));
 		} else {					# Text line
-			attrset(COLOR_PAIR(2));
+			attrset($win, COLOR_PAIR(2));
 		}
 		$line = encode('UTF-8', $line);
 		$line = hlsearch $line;
-		addstr($line);
-		getyx($y, $x);
-		move($y + 1, 0);
+		addstr($win, $line);
+		getyx($win, $y, $x);
+		move($win, $y + 1, 0);
 	}
+	refresh($win);
 }
 
 # see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
@@ -688,8 +693,10 @@ sub page_nav {
 
 	while (1) {
 		if (defined $status_win) {
+			clear($status_win);
 			delwin($status_win);
 		}
+		c_title_win;
 
 		if ($reflow_text) {
 			$reflow_text = 0;
@@ -698,11 +705,11 @@ sub page_nav {
 			$render_length = scalar(@formatted);
 		}
 
-		my $displayrows = $LINES - 1;
+		my $displayrows = $LINES - 2;
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
 			gmirender $viewfrom, $viewto, \@formatted, \@links;
-			refresh($win);
+			refresh;
 		}
 		$update_viewport = 0;
 		my ($c, $fn) = getchar;		# $fn: a function key, like arrow keys etc
@@ -1157,7 +1164,9 @@ Net::SSLeay::initialize();	# initialize ssl library once
 if (not $opt_dump) {
 	initscr;
 	start_color;	# TODO: check if (has_colors)
-	$win = newwin(0,0,0,0);
+	$title_win = newwin(1, 0, 0, 0);
+	$win = newwin(0,0,1,0);
+	refresh;
 	noecho;
 	nonl;
 	cbreak;
