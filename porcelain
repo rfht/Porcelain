@@ -669,9 +669,10 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 		return "Unknown host: $domainname, user aborted";
 	}
 	# New Host. add to @known_hosts and write to $hosts_file
+	($kh_domain, $kh_algo, $kh_serv_hash) = ($domainname, $default_fp_algo, lc($url_cert->fingerprint_sha256() =~ tr/://dr));
 	open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
 	if ($default_fp_algo eq "SHA-256") {
-		my $kh_line = $domainname . ' ' . $default_fp_algo . ' ' . lc($url_cert->fingerprint_sha256() =~ tr/://dr);
+		my $kh_line = $kh_domain . ' ' . $kh_algo . ' ' . $kh_serv_hash;
 		push @known_hosts, $kh_line;
 		$fh->print($kh_line . "\n");
 		close $fh;
@@ -796,7 +797,7 @@ sub page_nav {
 			#} else {
 				#push @info, "OOB Verification:\tNot Found";
 			#}
-			push @info, "\n\n" . Porcelain::RandomArt->randomart($url_cert->fingerprint_sha256());
+			push @info, "\n\n" . Porcelain::RandomArt->randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr));
 			my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
@@ -815,10 +816,19 @@ sub page_nav {
 			chomp $r;
 			$r = lc $r;
 			if ($r eq "m") {			# manual mode
-				clean_exit "v: manual mode";
-				# TODO: show SHA-256 and Porcelain::RandomArt->randomart(lc($sha256 =~ tr/://dr)) to user
-				#	ask user if it matches 
-				#	then store the $sha256 (from $url_cert) in oob_tb/oob_file
+				my $match_win_width = max(int($COLS / 1.25), 22);
+				my $match_win_height = max(int($displayrows / 1.25), 12);
+				my $match_win = newwin($match_win_height, $match_win_width, int(($displayrows - $match_win_height) / 2), int(($COLS - $match_win_width) / 2)); 
+				box($match_win, 0, 0);
+				addstr($match_win, 1, 1, $url_cert->fingerprint_sha256);
+				addstr($match_win, 3, 1, Porcelain::RandomArt->randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr)));
+				addstr($match_win, $match_win_height - 2, 1, "Compare with SHA-256 fingerprint obtained from a credible source. Does it match?");
+				refresh($match_win);
+				$r = getch;
+				unless (lc($r) eq 'y') {
+					return;
+				}
+				# TODO: store the $sha256 (from $url_cert) in known_hosts
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
 				clean_exit "v: SHA-256";
 				# TODO: compare user-entered SHA-256 to the one from the server.
@@ -1296,9 +1306,13 @@ Display browsing history.
 
 Open a new link (prompts for link)
 
+=item i
+
+Show short info.
+
 =item I
 
-Print info.
+Show detailed info.
 
 =item q
 
@@ -1347,6 +1361,10 @@ Go to the beginning of the page.
 =item J/End
 
 Go to the end of the page.
+
+=item v
+
+Verification for server identity. Prompts for manual comparison, SHA-256 hash, or a third-party resource.
 
 =item 1,2,3,...
 
