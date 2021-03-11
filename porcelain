@@ -320,10 +320,27 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 }
 
 sub c_title_win {	# modify $title_win. in: domainname
-	my ($addr) = @_;
-	bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
+	my $sec_status = undef;
+	# TODO: simplify the branching; find a way to combine the "red" results
+	if (lc($url_cert->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
+		if ($kh_oob_hash) {
+			if ($kh_serv_hash eq $kh_oob_hash) {			# green: all match
+				bkgd($title_win, COLOR_PAIR(4) | A_REVERSE);
+				$sec_status = "Server identity verified on $kh_oob_date";
+			} else {						# red: kh_oob and kh_serv don't match
+				bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
+				$sec_status = "SERVER IDENTITY MISMATCH (last update on $kh_oob_date). CAUTION!";
+			}
+		} else {							# yellow: url_cert and kh_serv match; no oob
+			bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
+			$sec_status = "TOFU okay; server identity not confirmed";
+		}
+	} else {
+		bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
+		$sec_status = "SERVER CERT DOES NOT MATCH THE RECORDED CERT";
+	}
 	clear($title_win);
-	addstr($title_win, $addr);
+	addstr($title_win, $url . "\t" . $sec_status);
 	refresh($title_win);
 }
 
@@ -707,21 +724,13 @@ sub page_nav {
 	my $reflow_text = 1;
 
 	my $domainname = gem_host($url);
-	#my $oob_line;
-	#foreach (@oob_tb) {
-		#if (substr($_, 0, length($domain)) eq $domain) {
-			#$oob_line = $_;
-			#last;
-		#}
-	#}
-	#my ($oob_domain, $oob_mode, $oob_user_sha, $oob_server_sha, $oob_last_check_date) = split ' ', $oob_line;
 
 	while (1) {
 		if (defined $status_win) {
 			clear($status_win);
 			delwin($status_win);
 		}
-		c_title_win $url;
+		c_title_win;
 
 		if ($reflow_text) {
 			$reflow_text = 0;
@@ -799,12 +808,6 @@ sub page_nav {
 			return;
 		} elsif ($c eq 'v') {	# verify server identity
 			my $domain = gem_host $url;
-			#if ($oob_line) {	# update_oob mode
-				# TODO: warn if there already exists an entry in $oob_tb
-				# TODO: implement
-				#$r = c_prompt_ch "Already existing OOB record for $domain dated " . (split(" ", $oob_line))[3] . ". Update? [yn] ";
-				#return if lc($r) eq "y";
-			#}
 			# ask for SHA-256, manual confirmation, or URL
 			undef $r;
 			until ($r) {
