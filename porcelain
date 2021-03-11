@@ -727,10 +727,8 @@ sub page_nav {
 
 	while (1) {
 		if (defined $status_win) {
-			clear($status_win);
 			delwin($status_win);
 		}
-		c_title_win;
 
 		if ($reflow_text) {
 			$reflow_text = 0;
@@ -742,6 +740,7 @@ sub page_nav {
 		my $displayrows = $LINES - 2;
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
+			c_title_win;
 			gmirender $viewfrom, $viewto, \@formatted, \@links;
 			refresh;
 		}
