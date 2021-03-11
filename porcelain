@@ -58,7 +58,8 @@
 # - make it possible to use ':port' in URL like with gemini://rawtext.club:1965/~sloum/spacewalk.gmi
 # - get OpenSSL version string with: print (Net::SSLeay::SSLeay_version() . "\n");
 # - store protocol version with my $rv = Net::SSLeay::get_version($ssl); => can use to check TLSv1.3
-# - fix underscore in front of link label, see gemini://astrobotany.mozz.us
+# - fix underscore in front of link, header , see gemini://astrobotany.mozz.us
+#	gemini://palm93.com/2021-03-07_Midgard.gmi 
 # - implement geminispace search, like 's' in gemini://gmn.clttr.info/cgmnlm.gmi ?
 # - c_prompt_str - enable backspace, arrow key navigation, cursor?
 # - use newpad with $max_vrows and $max_vcols rather than simple window for the display
@@ -66,6 +67,8 @@
 # - make sure to escape dots and other RE chars in all uses of grep
 # - investigate segfaults, e.g. 61		   start = win->_line[y].text; in wclear, when leaving Info page
 # - turn the lower-case SHA-256 without ':' into a sub
+# - implement caching of webpages
+# - add the server response header (e.g. "20 text/gemini; lang=en-US;charset=utf-8") to Info page
 
 use strict;
 use warnings;
