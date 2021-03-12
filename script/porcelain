@@ -69,6 +69,7 @@
 # - turn the lower-case SHA-256 without ':' into a sub
 # - implement caching of webpages
 # - add the server response header (e.g. "20 text/gemini; lang=en-US;charset=utf-8") to Info page
+# - other page to test with temporary certs: gemini://bestiya.duckdns.org/
 
 use strict;
 use warnings;
