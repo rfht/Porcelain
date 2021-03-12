@@ -92,7 +92,7 @@ require Net::SSLeay;
 use OpenBSD::Pledge;
 use OpenBSD::Unveil;
 use Pod::Usage;
-use Porcelain::RandomArt;	# call with Porcelain::RandomArt->randomart(<string>);
+use Porcelain::RandomArt qw(randomart);
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
@@ -804,7 +804,7 @@ sub page_nav {
 			#} else {
 				#push @info, "OOB Verification:\tNot Found";
 			#}
-			push @info, "\n\n" . Porcelain::RandomArt->randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr));
+			push @info, "\n\n" . randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr));
 			my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
@@ -828,7 +828,7 @@ sub page_nav {
 				my $match_win = newwin($match_win_height, $match_win_width, int(($displayrows - $match_win_height) / 2), int(($COLS - $match_win_width) / 2)); 
 				box($match_win, 0, 0);
 				addstr($match_win, 1, 1, $url_cert->fingerprint_sha256);
-				addstr($match_win, 3, 1, Porcelain::RandomArt->randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr)));
+				addstr($match_win, 3, 1, randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr)));
 				addstr($match_win, $match_win_height - 2, 1, "Compare with SHA-256 fingerprint obtained from a credible source. Does it match?");
 				refresh($match_win);
 				$r = getch;

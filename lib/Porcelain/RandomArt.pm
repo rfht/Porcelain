@@ -8,6 +8,10 @@ package Porcelain::RandomArt;
 use strict;
 use warnings;
 
+require Exporter;
+our @ISA = qw(Exporter);
+our @EXPORT_OK = qw(randomart);
+
 my $base = 8;
 my %size = (
     y => $base + 1,
@@ -23,18 +27,7 @@ sub mx ($$) { return $_[0] > $_[1] ? $_[0] : $_[1] }
 use POSIX qw/ floor /;
 
 sub randomart {
-    my $self = shift;
-    my %arguments;
-    if ( @_ == 1 ) {
-        $arguments{ digest } = shift;
-    }
-    else {
-        %arguments = @_;
-    }
-
-    my $digest = $arguments{ digest };
-    return unless $digest; # 0 is not a valid digest, etc.
-
+    my $digest = shift;
     my @digest_bytes = unpack 'C*', pack 'H*', $digest;
 
     my @field;
