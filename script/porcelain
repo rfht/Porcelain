@@ -78,6 +78,9 @@ package Porcelain::Main;
 
 $main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
 
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
 use Crypt::OpenSSL::X509;
 use Curses;
