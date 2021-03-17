@@ -100,6 +100,7 @@ use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
 use open ':encoding(UTF-8)';
+use subs qw(open_about);
 
 my $url;
 my $url_cert;
@@ -242,6 +243,8 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	if ($_[0] =~ m{^[[:alpha:]]+://}) {
 		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;
+	} elsif ($_[0] =~ m{^about:}) {
+		return 'about';
 	} elsif ($_[0] =~ m{^mailto:}) {
 		return 'mailto';
 	} elsif ($_[0] =~ m{://}) {		# '' ==  unsupported protocol
@@ -764,11 +767,13 @@ sub page_nav {
 			$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
 		}
 		if ($c eq 'H') {	# show history
-			my $histwin = c_fullscr join("\n", $url . " <-- CURRENT URL", reverse(@back_history)), "History";
-			undef $c;
-			$c = getchar;
-			delwin($histwin);
-			$update_viewport = 1;
+			#my $histwin = c_fullscr join("\n", $url . " <-- CURRENT URL", reverse(@back_history)), "History";
+			#undef $c;
+			#$c = getchar;
+			#delwin($histwin);
+			open_about "about:history";
+			#$update_viewport = 1;
+			return;
 		} elsif ($c eq 'i') {	# basic info (position in document, etc.	# TODO: expand, e.g. URL
 			my $linesfrom = $viewfrom + 1;
 			my $linesto = $viewto + 1;
@@ -967,7 +972,30 @@ sub page_nav {
 	}
 }
 
-# TODO: separate subs for gemini protocol and text/gemini resource
+sub preformat_linklist {	# preformat resources for display in about:... inarray --> outarray
+	my $inarray = $_[0];
+	${$inarray}[0] = "# " . ${$inarray}[0];	# First line is the page title
+	splice @$inarray, 1, 0, "";
+	foreach(@$inarray[2..scalar(@$inarray) - 1]) {
+		$_ = "=> " . $_;
+	}
+}
+
+sub open_about {	# resource, e.g. 'about:history'
+	my $about_page = substr $_[0], 6;	# remove leading 'about:'
+	my @about_cont;				# content for the about page
+	if ($about_page eq "history") {
+		@about_cont = @back_history;
+		unshift @about_cont, ("History", $url . " $url <-- CURRENT URL");
+	} elsif ($about_page eq "bookmarks") {
+	} elsif ($about_page eq "subscriptions") {
+	} else {
+		die "Invalid about address: $_[0]";
+	}
+	preformat_linklist \@about_cont;
+	return page_nav \@about_cont;
+}
+
 sub open_gemini {	# url, certpath (optional), keypath (optional)
 	my ($resource, $certpath, $keypath) = @_;
 	my $domain = gem_host($resource);
