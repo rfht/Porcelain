@@ -30,9 +30,7 @@
 #	https://dragonscave.space/@devinprater/105782591455644854
 # - implement logging messages, warnings, errors to file
 # - add mouse support?!
-# - implement 'r' key to resize/reload the page (e.g. after resizing terminal)
 # - implement 'N' to search backwards
-# - implement 'u' to go up in directory hierarchy, and another key to go to the root of the current domain
 # - implement '|' to pipe to external programs (like espeak)
 # - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 # - update README, ideally as output from pod2usage
@@ -70,6 +68,9 @@
 # - implement caching of webpages
 # - add the server response header (e.g. "20 text/gemini; lang=en-US;charset=utf-8") to Info page
 # - other page to test with temporary certs: gemini://bestiya.duckdns.org/
+# - check why cert mismatch with gemini://skyjake.fi/lagrange/ when following link from other domain (hyperborea.org)
+# - add a print option (to a printer, e.g. via lpr)
+# - add IRI support (see mailing list)
 
 use strict;
 use warnings;
@@ -89,8 +90,10 @@ use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
 require Net::SSLeay;
-use OpenBSD::Pledge;
-use OpenBSD::Unveil;
+if ($^O eq 'openbsd') {
+	use OpenBSD::Pledge;
+	use OpenBSD::Unveil;
+}
 use Pod::Usage;
 use Porcelain::RandomArt qw(randomart);
 use Text::CharWidth qw(mbswidth);
@@ -813,6 +816,18 @@ sub page_nav {
 		} elsif ($c eq 'q') {	# quit
 			undef $url;
 			return;
+		} elsif ($c eq 'r') {	# go to domain root
+			$url = "gemini://" . gem_host($url);
+			return;
+		} elsif ($c eq 'R') {	# reload page
+			return;
+		} elsif ($c eq 'u') {	# up in directories on domain
+			my $slashcount = ($url =~ tr|/||);
+			if ($slashcount > 3) {	# only go up if not at root of the domain
+				$url =~ s|[^/]+/[^/]*$||;
+				return;
+			}
+			# TODO: warn if can't go up
 		} elsif ($c eq 'v') {	# verify server identity
 			my $domain = gem_host $url;
 			# ask for SHA-256, manual confirmation, or URL
@@ -1337,11 +1352,15 @@ Go forward in browsing history.
 
 Next matching text.
 
+=item u
+
+Go up in the domain hierarchy.
+
 =item r
 
 Go to root of the domain. 
 
-=item R/F5
+=item R
 
 Reload/refresh page.
 
