@@ -71,6 +71,7 @@
 # - add a print option (to a printer, e.g. via lpr)
 # - add IRI support (see mailing list)
 # - implement a way to preview links before following them
+# - fix glitch of line continuation showing the internal leading characters e.g. gemini://thfr.info/gemini/modified-trust-verify.gmi list items when scrolling past initial line
 
 use strict;
 use warnings;
