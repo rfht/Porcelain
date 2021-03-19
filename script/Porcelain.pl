@@ -32,7 +32,6 @@
 # - add mouse support?!
 # - implement 'N' to search backwards
 # - implement '|' to pipe to external programs (like espeak)
-# - implement 'next'/'previous' functionality as outlined here: gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 # - update README, ideally as output from pod2usage
 # - split subs out into .pm?
 # - move documentation into porcelain.pod?
@@ -71,6 +70,7 @@
 # - check why cert mismatch with gemini://skyjake.fi/lagrange/ when following link from other domain (hyperborea.org)
 # - add a print option (to a printer, e.g. via lpr)
 # - add IRI support (see mailing list)
+# - implement a way to preview links before following them
 
 use strict;
 use warnings;
@@ -90,7 +90,7 @@ use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
 require Net::SSLeay;
-if ($^O eq 'openbsd') {
+if ($^O eq 'openbsd') {	# TODO: don't load if --nopledge/--nounveil
 	use OpenBSD::Pledge;
 	use OpenBSD::Unveil;
 }
@@ -108,6 +108,8 @@ my @back_history;
 my @forward_history;
 my %open_with;
 my @links;		# array containing links in the pages
+my @last_links;		# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
+my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 my $win;
 my $title_win;
 my $status_win;
@@ -806,12 +808,6 @@ sub page_nav {
 			} else {
 				push @info, "\t\t\tSelf-signed?:\t\tNo";
 			}
-			#if (my @match = grep /^$domainname/, @oob_tb) {
-				#push @info, "OOB Verification:\tFound";
-				# TODO: add OOB Match, OOB Date
-			#} else {
-				#push @info, "OOB Verification:\tNot Found";
-			#}
 			push @info, "\n\n" . randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr));
 			my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
@@ -872,6 +868,18 @@ sub page_nav {
 				clean_exit "Invalid response: $r";
 			}
 			# TODO: implement creating the record and storing it
+		} elsif ($c eq "]") {	# 'next' gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
+			if (defined $chosen_link && $chosen_link < scalar(@last_links)-1 && defined $last_links[$chosen_link+1]) {
+				$chosen_link++;
+				$url = $last_links[$chosen_link];
+				return;
+			}	# TODO: warn/error if no such link
+		} elsif ($c eq "[") {	# 'previous'
+			if (defined $chosen_link && $chosen_link > 0 && defined $last_links[$chosen_link-1]) {
+				$chosen_link--;
+				$url = $last_links[$chosen_link];
+				return;
+			}	# TODO: warn/error if no such link
 		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
 			if (scalar(@back_history) > 0) {
 				push @forward_history, $url;
@@ -931,6 +939,10 @@ sub page_nav {
 			return;
 		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
 			my $s = c_prompt_str(": ");
+			# 'up'/'..'
+			# 'root'/'/'
+			# 'next', 'previous'
+			# 'back', 'forward'
 			addstr(0, 0, "You typed: " . $s);
 			getch;
 			$update_viewport = 1;
@@ -966,9 +978,14 @@ sub page_nav {
 				c_err "link number outside of range of current page: $c";
 				return;
 			}
-			c_statusline "open link: $c - " . $links[$c-1];
+			$chosen_link = $c-1;
+			@last_links = @links;	# TODO: last links needs to store absolute links, or use last url from history
+			c_statusline "open link: $c - " . $last_links[$chosen_link];
 			push @back_history, $url;	# save last url to back_history
-			$url = url2absolute($url, $links[$c - 1]);
+			foreach (@last_links) {
+				$_ = url2absolute($url, $_);
+			}
+			$url = $last_links[$chosen_link];
 			return;
 		}
 	}
