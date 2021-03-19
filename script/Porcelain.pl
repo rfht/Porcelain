@@ -214,7 +214,7 @@ sub oob {	# ouf-of-band identity verification
 	#	3. pubkey or hash obtained from third-party		=> resource (e.g. trust list address) + SHA-256 + date
 }
 
-# TODO: merge store_privkey and store_cert into same function
+# TODO: merge store_privkey and store_cert into same function (very similar)
 sub store_privkey {	# privkey, filename -->
 	my ($pk, $filenam) = @_;
 	open my $fh, '>:raw', $filenam or die;
@@ -337,23 +337,29 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 
 sub c_title_win {	# modify $title_win. in: domainname
 	my $sec_status = undef;
-	# TODO: simplify the branching; find a way to combine the "red" results
-	if (lc($url_cert->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
-		if ($kh_oob_hash) {
-			if ($kh_serv_hash eq $kh_oob_hash) {			# green: all match
-				bkgd($title_win, COLOR_PAIR(4) | A_REVERSE);
-				$sec_status = "Server identity verified on $kh_oob_date";
-			} else {						# red: kh_oob and kh_serv don't match
-				bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
-				$sec_status = "SERVER IDENTITY MISMATCH (last update on $kh_oob_date). CAUTION!";
+	if (defined $url_cert) {
+		# TODO: simplify the branching; find a way to combine the "red" results
+		if (lc($url_cert->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
+			if ($kh_oob_hash) {
+				if ($kh_serv_hash eq $kh_oob_hash) {			# green: all match
+					bkgd($title_win, COLOR_PAIR(4) | A_REVERSE);
+					$sec_status = "Server identity verified on $kh_oob_date";
+				} else {						# red: kh_oob and kh_serv don't match
+					bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
+					$sec_status = "SERVER IDENTITY MISMATCH (last update on $kh_oob_date). CAUTION!";
+				}
+			} else {							# yellow: url_cert and kh_serv match; no oob
+				bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
+				$sec_status = "TOFU okay; server identity not confirmed";
 			}
-		} else {							# yellow: url_cert and kh_serv match; no oob
-			bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
-			$sec_status = "TOFU okay; server identity not confirmed";
+		} else {
+			bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
+			$sec_status = "SERVER CERT DOES NOT MATCH THE RECORDED CERT";
 		}
 	} else {
-		bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
-		$sec_status = "SERVER CERT DOES NOT MATCH THE RECORDED CERT";
+		# This is encountered if local file
+		bkgd($title_win, COLOR_PAIR(2) | A_REVERSE);
+		$sec_status = "Local File";
 	}
 	clear($title_win);
 	addstr($title_win, $url . "\t" . $sec_status);
@@ -395,7 +401,6 @@ sub center_text {	# string --> string with leading space to position in center o
 sub caught_sigint {
 	clean_exit "Caught SIGINT - aborting...";
 }
-
 $SIG{INT} = \&caught_sigint;
 
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
@@ -1016,6 +1021,24 @@ sub open_about {	# resource, e.g. 'about:history'
 	return page_nav \@about_cont;
 }
 
+sub open_file {		# opens a local file
+	# get file MIME type with 'file -bi' command
+	# if text/gemini, read file into variable, then render
+	my $file = $_[0];
+	my $raw_cont;
+	if (substr($file, 0, 7) eq "file://") {
+		$file = substr($file, 7);
+	}
+	open(my $fh, '<', $file) or die "cannot open $file";
+	{
+		local $/;
+		$raw_cont = <$fh>;
+	}
+	close($fh);
+	my @file_cont = split('\n', $raw_cont);
+	return page_nav \@file_cont;
+}
+
 sub open_gemini {	# url, certpath (optional), keypath (optional)
 	my ($resource, $certpath, $keypath) = @_;
 	my $domain = gem_host($resource);
@@ -1174,17 +1197,16 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 	}
 }
 
-sub open_file_protocol {	# open from 'file://..' resource
-	# get file MIME type with 'file -bi' command
-	# if text/gemini, read file into variable, then render
-}
-
 sub open_custom {
 	if (defined $open_with{$_[0]}) {
 		system("$open_with{$_[0]} $_[1]");
 		$url = pop @back_history;
 	} else {
-		clean_exit "Not implemented.";
+		if ($_[0] eq 'file') {
+			open_file $url;
+		} else {
+			clean_exit "Not implemented.";
+		}
 	}
 }
 
@@ -1282,6 +1304,7 @@ if (not $opt_dump) {
 
 if ($opt_pledge) {
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
+	# TODO: remove cpath by creating the files with the installer?
 	#	sslcat_custom:			rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
