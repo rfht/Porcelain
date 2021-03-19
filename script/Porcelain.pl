@@ -924,8 +924,10 @@ sub page_nav {
 			$update_viewport = 1;
 		} elsif ($c eq 'o') {
 			push @back_history, $url;	# save last url to back_history
-			$url = c_prompt_str("url: gemini://");	# TODO: allow relative links?? allow full link with 'gemini://'
-			$url = 'gemini://' . $url;
+			$url = c_prompt_str("url: ");	# not allowing relative links
+			if (not $url =~ m{:}) {
+				$url = "gemini://" . $url;
+			}
 			return;
 		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
 			my $s = c_prompt_str(": ");
@@ -1182,6 +1184,8 @@ sub open_url {
 		open_custom 'file', $_[0];
 	} elsif (uri_class($_[0]) eq 'mailto') {
 		open_custom 'mailto', $_[0];
+	} elsif (uri_class($_[0]) eq 'about') {
+		open_about $_[0];		# TODO: don't log about pages in history
 	} else {
 		clean_exit "Protocol not supported.";
 	}
