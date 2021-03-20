@@ -478,15 +478,6 @@ sub page_nav {
 	}
 }
 
-sub preformat_linklist {	# preformat resources for display in about:... inarray --> outarray
-	my $inarray = $_[0];
-	${$inarray}[0] = "# " . ${$inarray}[0];	# First line is the page title
-	splice @$inarray, 1, 0, "";
-	foreach(@$inarray[2..scalar(@$inarray) - 1]) {
-		$_ = "=> " . $_;
-	}
-}
-
 sub open_about {	# resource, e.g. 'about:history'
 	my $about_page = substr $_[0], 6;	# remove leading 'about:'
 	my @about_cont;				# content for the about page
@@ -498,12 +489,13 @@ sub open_about {	# resource, e.g. 'about:history'
 	} else {
 		die "Invalid about address: $_[0]";
 	}
+	# TODO: move this formatting into Format.pm
 	preformat_linklist \@about_cont;
 	return page_nav \@about_cont;
 }
 
 sub open_file {		# opens a local file
-	# get file MIME type with 'file -bi' command
+	# TODO: get file MIME type with 'file -bi' command
 	# if text/gemini, read file into variable, then render
 	my $file = $_[0];
 	my $raw_cont;

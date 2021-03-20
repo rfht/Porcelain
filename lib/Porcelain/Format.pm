@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(center_text gmiformat);
+our @EXPORT = qw(center_text gmiformat preformat_linklist);
 
 use Curses;	# for $COLS
 use Text::CharWidth qw(mbswidth);
@@ -89,6 +89,15 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 				fmtline($line =~ s/^\s*//r, $outarray, 0);
 			}
 		}
+	}
+}
+
+sub preformat_linklist {	# preformat resources for display in about:... inarray --> outarray
+	my $inarray = $_[0];
+	${$inarray}[0] = "# " . ${$inarray}[0];	# First line is the page title
+	splice @$inarray, 1, 0, "";
+	foreach(@$inarray[2..scalar(@$inarray) - 1]) {
+		$_ = "=> " . $_;
 	}
 }
 
