@@ -165,23 +165,6 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	}
 }
 
-# c_* functions are for Curses
-sub c_fullscr {		# Curses fullscreen display; DOESN'T SCROLL! (TODO) --> return user key;
-	# NOTE: delwin needs to be called outside!
-	my $fullscr = newwin(0, 0, 0, 0);
-	if (defined $_[1]) {
-		attrset($fullscr, COLOR_PAIR(2));
-		attron($fullscr, A_BOLD);
-		addstr($fullscr, center_text($_[1]));
-		attroff($fullscr, A_BOLD);
-		getyx($fullscr, my $y, my $x);
-		move($fullscr, $y + 2, 0);
-	}
-	addstr($fullscr, $_[0]);
-	refresh($fullscr);
-	return $fullscr;
-}
-
 sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
 	my $prompt_win = newwin(0,0,$LINES - 1, 0);
 	bkgd($prompt_win, COLOR_PAIR(2) | A_REVERSE);
