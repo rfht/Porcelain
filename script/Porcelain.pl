@@ -99,6 +99,7 @@ require Net::SSLeay;
 use Pod::Usage;
 use Porcelain::Crypto;
 use Porcelain::CursesUI;
+use Porcelain::Format;
 use Porcelain::Porcelain;
 use Porcelain::RandomArt;
 use Text::CharWidth qw(mbswidth);
@@ -162,14 +163,6 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	} else {
 		return '';			# '' == unsupported protocol
 	}
-}
-
-sub center_text {	# string --> string with leading space to position in center of terminal
-	my $str = $_[0];
-	my $colcenter = int($COLS / 2);
-	my $strcenter = int(length($str) / 2);
-	my $adjust = $colcenter - $strcenter;	# amount of space to move string by: $center - half the length of the string
-	return (" " x $adjust) . $str;
 }
 
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
