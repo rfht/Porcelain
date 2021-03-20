@@ -130,7 +130,7 @@ my $redirect_max = 5;	# TODO: allow setting this in the config
 my $default_fp_algo = "SHA-256";
 
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
-my $idents_dir = $porcelain_dir . "/idents";
+our $idents_dir = $porcelain_dir . "/idents";
 my $hosts_file = $porcelain_dir . "/known_hosts";
 my @known_hosts;
 
@@ -145,36 +145,6 @@ my $kh_oob_date;	# date of last out-of-band update
 $SIG{INT} = \&caught_sigint;
 
 ### Subs ###
-
-# TODO: merge store_privkey and store_cert into same function (very similar)
-sub store_privkey {	# privkey, filename -->
-	my ($pk, $filenam) = @_;
-	open my $fh, '>:raw', $filenam or die;
-	print $fh Net::SSLeay::PEM_get_string_PrivateKey($pk);
-	close $fh;
-}
-sub store_cert {	# x509 cert, filename -->
-	my ($x509, $filenam) = @_;
-	open my $fh, '>:raw', $filenam or die;
-	print $fh Net::SSLeay::PEM_get_string_X509($x509);
-	close $fh;
-}
-
-sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in days --> SHA-256 of the new cert
-	my $days = $_[0];
-
-	my $pkey = gen_privkey;
-	my $x509 = gen_client_cert($days, $pkey);
-	my $sha = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($x509))->fingerprint_sha256();
-	$sha = lc($sha =~ tr/://dr);
-	my $key_out_file = $idents_dir . "/" . $sha . ".key";
-	my $crt_out_file = $idents_dir . "/" . $sha . ".crt";
-	store_privkey $pkey, $key_out_file;
-	store_cert $x509, $crt_out_file;
-
-	return $sha;
-}
-
 sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	if ($_[0] =~ m{^[[:alpha:]]+://}) {
 		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;

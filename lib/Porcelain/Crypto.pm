@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(gen_client_cert gen_privkey);
+our @EXPORT = qw(gen_client_cert gen_identity gen_privkey store_cert store_privkey);
 
 my $default_rsa_bits = 2048;
 my $rsa_exponent = 65537;
@@ -35,6 +35,34 @@ sub gen_client_cert {	# days for cert validity, private key --> return cert
 	Net::SSLeay::X509_sign($x509, $pkey, Net::SSLeay::EVP_sha1());	# TODO: is SHA-1 a reasonable algorithm here?
 	#Net::SSLeay::X509_free($x509);	# TODO: needed here?
 	return $x509;
+}
+
+# TODO: merge store_privkey and store_cert into same function (very similar)
+sub store_privkey {	# privkey, filename -->
+	my ($pk, $filenam) = @_;
+	open my $fh, '>:raw', $filenam or die;
+	print $fh Net::SSLeay::PEM_get_string_PrivateKey($pk);
+	close $fh;
+}
+
+sub store_cert {	# x509 cert, filename -->
+	my ($x509, $filenam) = @_;
+	open my $fh, '>:raw', $filenam or die;
+	print $fh Net::SSLeay::PEM_get_string_X509($x509);
+	close $fh;
+}
+
+sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in days --> SHA-256 of the new cert
+	my $days = $_[0];
+	my $pkey = gen_privkey;
+	my $x509 = gen_client_cert($days, $pkey);
+	my $sha = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($x509))->fingerprint_sha256();
+	$sha = lc($sha =~ tr/://dr);
+	my $key_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".key";
+	my $crt_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".crt";
+	store_privkey $pkey, $key_out_file;
+	store_cert $x509, $crt_out_file;
+	return $sha;
 }
 
 1;
