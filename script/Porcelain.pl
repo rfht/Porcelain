@@ -100,6 +100,7 @@ use Pod::Usage;
 use Porcelain::Crypto;
 use Porcelain::CursesUI;
 use Porcelain::Format;
+use Porcelain::Nav;
 use Porcelain::Porcelain;
 use Porcelain::RandomArt;
 
@@ -194,27 +195,6 @@ sub gem_host {
 	my $out = substr $input, 9;	# remove leading 'gemini://'
 	$out =~ s|/.*||;
 	return $out;
-}
-
-sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $displayrows, $render_length --> new $viewfrom
-	my ($sequence, $fromln, $rows, $render_length) = @_; 
-	if (scalar(@$sequence) < 1) {
-		c_prompt_ch "No matches.";
-		return undef;
-	} else {
-		my $centerline = $fromln + int(($rows + 1) / 2);
-		if ($centerline >= ${$sequence}[-1]) {	# wrap to beginning of document
-			$fromln = max(${$sequence}[0] - int(($rows + 1) / 2), 0);
-		} else {
-			foreach (@$sequence) {
-				if ($_ > $centerline) {
-					$fromln = min($_ - int(($rows + 1) / 2), $render_length - $rows - 1);
-					last;
-				}
-			}
-		}
-		return $fromln;
-	}
 }
 
 sub page_nav {
