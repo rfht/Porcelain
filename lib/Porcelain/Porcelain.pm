@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(caught_sigint downloader);
+our @EXPORT = qw(caught_sigint downloader lines sep);
 
 sub caught_sigint {
 	Porcelain::CursesUI::clean_exit "Caught SIGINT - aborting...";
@@ -21,6 +21,17 @@ sub downloader {	# $url, $body --> 0: success, >0: failure
 	print $fh $dlcont or Porcelain::CursesUI::clean_exit "error writing to file $dl_file";
 	close $fh;
 	return 0;
+}
+
+sub lines {	# multi-line text scalar --> $first_line / @lines
+	my @lines = (split /\n/, $_[0]);
+	return wantarray ? @lines : $lines[0];
+}
+
+sub sep {	# gmi string containing whitespace --> ($first, $rest)
+	my $first =	$_[0] =~ s/[[:blank:]].*$//r;
+	my $rest =	$_[0] =~ s/^[^[:blank:]]*[[:blank:]]*//r;
+	return wantarray ? ($first, $rest) : $first;
 }
 
 1;

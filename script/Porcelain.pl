@@ -205,17 +205,6 @@ sub gem_host {
 	return $out;
 }
 
-sub sep {	# gmi string containing whitespace --> ($first, $rest)
-	my $first =	$_[0] =~ s/[[:blank:]].*$//r;
-	my $rest =	$_[0] =~ s/^[^[:blank:]]*[[:blank:]]*//r;
-	return wantarray ? ($first, $rest) : $first;
-}
-
-sub lines {	# multi-line text scalar --> $first_line / @lines
-	my @lines = (split /\n/, $_[0]);
-	return wantarray ? @lines : $lines[0];
-}
-
 # format $line by breaking it into multiple line if needed.  $extra is
 # the length of the prepended string when rendered, $p1 and $p2 the
 # prefixes added to the first and the following lines respectively.
