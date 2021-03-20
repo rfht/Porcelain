@@ -289,97 +289,6 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 	}
 }
 
-sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted text (to outarray)
-	# call with "gmirender $viewfrom, $viewto, \@array"
-	my $hpos = $_[0];
-	my $hstop = $_[1];
-	my $inarray = $_[2];
-	my $line;
-	my $t_list = 0;	# toggle list
-	my $y;
-	my $x;
-	clear($win);
-	move($win, 0, 0);	# keep space for title_win
-	while ($hpos <= $hstop) {
-		$line = ${$inarray}[$hpos++];
-		if ($t_list && not $line =~ /^\*\*/) {
-			$t_list = not $t_list;			# unordered list has not been continued. Reset the toggle.
-		}
-		if ($line =~ /^```/) {				# Preformatted
-			# TODO: handle alt text?
-			$line = substr $line, 3;
-			attrset($win, COLOR_PAIR(4));
-		} elsif ($line =~ /^###/) {			# Heading 3
-			$line = substr $line, 3;
-			attrset($win, COLOR_PAIR(2));
-			attron($win, A_BOLD);
-		} elsif ($line =~ /^##/) {			# Heading 2
-			$line = substr $line, 2;
-			attrset($win, COLOR_PAIR(2));
-			attron($win, A_BOLD);
-			attron($win, A_UNDERLINE);
-		} elsif ($line =~ /^#/) {			# Heading 1
-			$line = substr $line, 1;
-			$line = center_text $line;
-			attrset($win, COLOR_PAIR(2));
-			attron($win, A_BOLD);
-		} elsif ($line =~ /^=>\[/) {			# Link
-			# TODO: style links according to same domain vs. other gemini domains
-			$line = substr $line, 2;
-			my @line_split = split(" ", $line);
-			my $link_index = shift @line_split;
-			my $li_num = $link_index;
-			$li_num =~ tr/\[\]//d;
-			$li_num = int($li_num - 1);	# zero based
-			if (uri_class($links[$li_num]) eq 'gemini' || uri_class($links[$li_num]) eq 'relative' || uri_class($links[$li_num]) eq 'root') {
-				attrset($win, COLOR_PAIR(5));	# cyan on black
-			} elsif (uri_class($links[$li_num]) eq 'gopher') {
-				attrset($win, COLOR_PAIR(6));	# magenta on black
-			} elsif (substr(uri_class($links[$li_num]), 0, 4) eq 'http') {
-				attrset($win, COLOR_PAIR(1));	# yellow on black
-			} else {	# not sure what this is linking to
-				attrset($win, COLOR_PAIR(2));
-			}
-			addstr($win, hlsearch($link_index . " ", $searchstr));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
-			attron($win, A_UNDERLINE);
-			$line = join(" ", @line_split);
-		} elsif ($line =~ /^=>(\s+)(.*)$/) {		# Continuation of Link
-			attroff($win, A_UNDERLINE);
-			addstr($win, $1);
-			attron($win, A_UNDERLINE);
-			$line = $2;
-		} elsif ($line =~ /^\* /) {			# Unordered List Item
-			$line =~ s/^\*/-/;
-			$t_list = 1;
-			attrset($win, COLOR_PAIR(2));
-		} elsif ($line =~ /^\*\*/ && $t_list) {		# Continuation of List Item
-			$line =~ s/^\*\*/  /;
-			attrset($win, COLOR_PAIR(2));
-		} elsif ($line =~ /^>/) {			# Quote
-			attrset($win, COLOR_PAIR(3));
-		} else {					# Text line
-			attrset($win, COLOR_PAIR(2));
-		}
-		$line = encode('UTF-8', $line);
-		$line = hlsearch $line, $searchstr;
-		addstr($win, $line);
-		getyx($win, $y, $x);
-		move($win, $y + 1, 0);
-	}
-	refresh($win);
-}
-
-sub downloader {	# $body --> 0: success, >0: failure
-	# TODO: add timeout; progress bar
-	my $dl_file = $url =~ s|^.*/||r;
-	$dl_file = $ENV{'HOME'} . "/Downloads/" . $dl_file;
-	c_prompt_ch "Downloading $url ...";
-	open my $fh, '>:raw', $dl_file or clean_exit "error opening $dl_file for writing";
-	print $fh $_[0] or clean_exit "error writing to file $dl_file";
-	close $fh;
-	return 0;
-}
-
 sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $displayrows, $render_length --> new $viewfrom
 	my ($sequence, $fromln, $rows, $render_length) = @_; 
 	if (scalar(@$sequence) < 1) {
@@ -429,7 +338,7 @@ sub page_nav {
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
 			c_title_win;
-			gmirender $viewfrom, $viewto, \@formatted, \@links;
+			gmirender $viewfrom, $viewto, \@formatted, \@links, $searchstr;
 			refresh;
 		}
 		$update_viewport = 0;
@@ -773,7 +682,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 					$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
 				}
 				if ($r =~ /^[Yy]$/) {
-					downloader(join("\n", @response)) && c_warn "Download of $url failed!";
+					downloader($url, join("\n", @response)) && c_warn "Download of $url failed!";
 				}
 			}
 			if (scalar(@back_history) > 0) {
