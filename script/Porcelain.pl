@@ -799,28 +799,6 @@ sub open_url {
 	}
 }
 
-sub readconf {	# filename of file with keys and values separated by ':'--> hash of keys and values
-	my $file = $_[0];
-	my %retval;
-	open(my $in, $file) or die "Can't open $file: $!";
-	while (<$in>)
-	{
-		chomp;
-		if ($_ =~ /^\s*#/) {	# ignore comments
-			next;
-		}
-		my ($key, $value) = split /:/;
-		next unless defined $value;
-		$key =~ s/^\s+//;
-		$key =~ s/\s+$//;
-		$value =~ s/^\s+//;
-		$value =~ s/\s+$//;
-		$retval{$key} = $value;
-	}
-	close $in or die "$in: $!";
-	return %retval
-}
-
 ### Process CLI Options ###
 my $configfile = $porcelain_dir . "/porcelain.conf";
 my $opt_dump =		'';	# dump page to STDOUT

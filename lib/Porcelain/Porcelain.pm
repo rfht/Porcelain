@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(caught_sigint downloader lines sep);
+our @EXPORT = qw(caught_sigint downloader lines readconf sep);
 
 sub caught_sigint {
 	Porcelain::CursesUI::clean_exit "Caught SIGINT - aborting...";
@@ -26,6 +26,28 @@ sub downloader {	# $url, $body --> 0: success, >0: failure
 sub lines {	# multi-line text scalar --> $first_line / @lines
 	my @lines = (split /\n/, $_[0]);
 	return wantarray ? @lines : $lines[0];
+}
+
+sub readconf {	# filename of file with keys and values separated by ':'--> hash of keys and values
+	my $file = $_[0];
+	my %retval;
+	open(my $in, $file) or die "Can't open $file: $!";
+	while (<$in>)
+	{
+		chomp;
+		if ($_ =~ /^\s*#/) {	# ignore comments
+			next;
+		}
+		my ($key, $value) = split /:/;
+		next unless defined $value;
+		$key =~ s/^\s+//;
+		$key =~ s/\s+$//;
+		$value =~ s/^\s+//;
+		$value =~ s/\s+$//;
+		$retval{$key} = $value;
+	}
+	close $in or die "$in: $!";
+	return %retval
 }
 
 sub sep {	# gmi string containing whitespace --> ($first, $rest)
