@@ -97,9 +97,10 @@ use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	
 use List::Util qw(min max);
 require Net::SSLeay;
 use Pod::Usage;
-use Porcelain::Crypto; # qw(gen_client_cert gen_privkey);
-use Porcelain::CursesUI; # qw(clean_exit);
-use Porcelain::RandomArt; # qw(randomart);
+use Porcelain::Crypto;
+use Porcelain::CursesUI;
+use Porcelain::Porcelain;
+use Porcelain::RandomArt;
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
@@ -172,10 +173,6 @@ sub center_text {	# string --> string with leading space to position in center o
 	my $strcenter = int(length($str) / 2);
 	my $adjust = $colcenter - $strcenter;	# amount of space to move string by: $center - half the length of the string
 	return (" " x $adjust) . $str;
-}
-
-sub caught_sigint {
-	clean_exit "Caught SIGINT - aborting...";
 }
 
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
