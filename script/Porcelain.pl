@@ -33,7 +33,6 @@
 # - implement 'N' to search backwards
 # - implement '|' to pipe to external programs (like espeak)
 # - update README, ideally as output from pod2usage
-# - split subs out into .pm?
 # - move documentation into porcelain.pod?
 # - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
 # - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
@@ -76,6 +75,7 @@
 # - remove need for rpath from sslcat_custom by preloading whatever is needed?
 # - implement fork+exec
 # - is 'our' instead of 'my' really needed for variables used by modules? e.g. $status_win
+# - use sub lines more consistently
 
 use strict;
 use warnings;
@@ -289,20 +289,6 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 	}
 }
 
-sub hlsearch {	# highlight search match
-	my $ret = $_[0];
-	if (length($searchstr) > 0) {
-		while ($ret =~ /$searchstr/i) {
-			addstr($win, substr($ret, 0, $-[0]));
-			attron($win, A_REVERSE);
-			addstr($win, substr($ret, $-[0], $+[0] - $-[0]));
-			attroff($win, A_REVERSE);
-			$ret = substr($ret, $+[0]);
-		}
-	}
-	return $ret;
-}
-
 sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted text (to outarray)
 	# call with "gmirender $viewfrom, $viewto, \@array"
 	my $hpos = $_[0];
@@ -354,7 +340,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			} else {	# not sure what this is linking to
 				attrset($win, COLOR_PAIR(2));
 			}
-			addstr($win, hlsearch($link_index . " "));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
+			addstr($win, hlsearch($link_index . " ", $searchstr));	# TODO/limitation: highlighting can't traverse/match across $link_index to rest of the line (link description)
 			attron($win, A_UNDERLINE);
 			$line = join(" ", @line_split);
 		} elsif ($line =~ /^=>(\s+)(.*)$/) {		# Continuation of Link
@@ -375,7 +361,7 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 			attrset($win, COLOR_PAIR(2));
 		}
 		$line = encode('UTF-8', $line);
-		$line = hlsearch $line;
+		$line = hlsearch $line, $searchstr;
 		addstr($win, $line);
 		getyx($win, $y, $x);
 		move($win, $y + 1, 0);

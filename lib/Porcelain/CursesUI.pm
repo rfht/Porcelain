@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str c_statusline c_title_win c_warn clean_exit);
+our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str c_statusline c_title_win c_warn clean_exit hlsearch);
 
 use Curses;
 use List::Util qw(min max);
@@ -144,6 +144,20 @@ sub c_err {	# Curses error: prompt char, can be any key --> user char
 	noecho;
 	delwin($prompt_win);
 	return $c;
+}
+
+sub hlsearch {	# highlight search match
+	my ($ret, $searchstring) = @_;
+	if (length($searchstring) > 0) {
+		while ($ret =~ /$searchstring/i) {
+			addstr($Porcelain::Main::win, substr($ret, 0, $-[0]));
+			attron($Porcelain::Main::win, A_REVERSE);
+			addstr($Porcelain::Main::win, substr($ret, $-[0], $+[0] - $-[0]));
+			attroff($Porcelain::Main::win, A_REVERSE);
+			$ret = substr($ret, $+[0]);
+		}
+	}
+	return $ret;
 }
 
 1;
