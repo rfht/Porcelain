@@ -75,6 +75,7 @@
 # - fix opening files like *.png
 # - remove need for rpath from sslcat_custom by preloading whatever is needed?
 # - implement fork+exec
+# - is 'our' instead of 'my' really needed for variables used by modules? e.g. $status_win
 
 use strict;
 use warnings;
@@ -106,8 +107,8 @@ use open ':encoding(UTF-8)';
 use subs qw(open_about);
 
 ### Variables ###
-my $url;
-my $url_cert;
+our $url;
+our $url_cert;
 my @back_history;
 my @forward_history;
 my %open_with;
@@ -116,12 +117,12 @@ my @last_links;		# array list from last page, for next/previous (see gemini://ge
 my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 our $win;
 our $title_win;
-my $status_win;
+our $status_win;
 my $searchstr = '';		# search string
 my @searchlns;		# lines with matches for search 
 my $r;		# responses to prompts
-my $max_vrows = 1024 * 1024;	# max virtual rows used in curses pads
-my $max_vcols = 1024;	# maximum virtual columns used in curses pads
+our $max_vrows = 1024 * 1024;	# max virtual rows used in curses pads
+our $max_vcols = 1024;	# maximum virtual columns used in curses pads
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
@@ -137,10 +138,10 @@ my @known_hosts;
 # known_hosts entries
 my $kh_domain;		# domain in known_hosts
 my $kh_algo;		# hash algorithm of known_hosts entry (e.g. SHA-256)
-my $kh_serv_hash;	# hash of the known server pubkey
-my $kh_oob_hash;	# hash from out-of-band source
+our $kh_serv_hash;	# hash of the known server pubkey
+our $kh_oob_hash;	# hash from out-of-band source
 my $kh_oob_source;	# source of out-of-band hash
-my $kh_oob_date;	# date of last out-of-band update
+our $kh_oob_date;	# date of last out-of-band update
 
 $SIG{INT} = \&caught_sigint;
 
@@ -163,116 +164,6 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	} else {
 		return '';			# '' == unsupported protocol
 	}
-}
-
-sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
-	my $prompt_win = newwin(0,0,$LINES - 1, 0);
-	bkgd($prompt_win, COLOR_PAIR(2) | A_REVERSE);
-	addstr($prompt_win, $_[0]);
-	refresh($prompt_win);
-	echo;
-	my $s = getstring($prompt_win);
-	noecho;
-	delwin($prompt_win);
-	return $s;
-}
-
-sub c_pad_str {	# PADDED Curses prompt for string: prompt string --> user string
-	# TODO: allow backspace etc
-	my $prompt_pad = newpad(1, $max_vcols);
-	bkgd($prompt_pad, COLOR_PAIR(2) | A_REVERSE);
-	addstr($prompt_pad, $_[0]);
-	prefresh($prompt_pad, 0, 0, $LINES - 1, 0, $LINES - 1, $COLS - 1);
-	my $s = '';
-	while (1) {
-		my $c = getch;
-		if (ord($c) == 13) {
-			last;
-		}
-		$s .= $c;
-		addch($prompt_pad, $c);
-		prefresh($prompt_pad, 0, max(length($_[0]) + length($s) - $COLS, 0), $LINES - 1, 0, $LINES - 1, $COLS - 1);
-	}
-	delwin($prompt_pad);
-	return $s;
-}
-
-sub c_prompt_ch {	# Curses prompt for char: prompt char --> user char
-	my $prompt_win = newwin(0,0,$LINES - 1, 0);
-	bkgd($prompt_win, COLOR_PAIR(2) | A_REVERSE);
-	addstr($prompt_win, $_[0]);
-	refresh($prompt_win);
-	echo;
-	my $c = getchar($prompt_win);
-	flushinp;
-	noecho;
-	delwin($prompt_win);
-	return $c;
-}
-
-sub c_statusline {	# Curses status line. Stays until refresh. Status text --> undef
-	if (defined $status_win) {
-		delwin($status_win);
-	}
-	$status_win = newwin(0, 0, $LINES - 1, 0);
-	bkgd($status_win, COLOR_PAIR(2) | A_REVERSE);
-	addstr($status_win, $_[0]);
-	refresh($status_win);
-}
-
-sub c_title_win {	# modify $title_win. in: domainname
-	my $sec_status = undef;
-	if (defined $url_cert) {
-		# TODO: simplify the branching; find a way to combine the "red" results
-		if (lc($url_cert->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
-			if ($kh_oob_hash) {
-				if ($kh_serv_hash eq $kh_oob_hash) {			# green: all match
-					bkgd($title_win, COLOR_PAIR(4) | A_REVERSE);
-					$sec_status = "Server identity verified on $kh_oob_date";
-				} else {						# red: kh_oob and kh_serv don't match
-					bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
-					$sec_status = "SERVER IDENTITY MISMATCH (last update on $kh_oob_date). CAUTION!";
-				}
-			} else {							# yellow: url_cert and kh_serv match; no oob
-				bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
-				$sec_status = "TOFU okay; server identity not confirmed";
-			}
-		} else {
-			bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
-			$sec_status = "SERVER CERT DOES NOT MATCH THE RECORDED CERT";
-		}
-	} else {
-		# This is encountered if local file
-		bkgd($title_win, COLOR_PAIR(2) | A_REVERSE);
-		$sec_status = "Local File";
-	}
-	clear($title_win);
-	addstr($title_win, $url . "\t" . $sec_status);
-	refresh($title_win);
-}
-
-sub c_warn {	# Curses warning: prompt char, can be any key --> user char
-	my $prompt_win = newwin(0,0,$LINES - 1, 0);
-	bkgd($prompt_win, COLOR_PAIR(1) | A_REVERSE);
-	addstr($prompt_win, $_[0]);
-	refresh($prompt_win);
-	echo;
-	my $c = getchar($prompt_win);
-	noecho;
-	delwin($prompt_win);
-	return $c;
-}
-
-sub c_err {	# Curses error: prompt char, can be any key --> user char
-	my $prompt_win = newwin(0,0,$LINES - 1, 0);
-	bkgd($prompt_win, COLOR_PAIR(7) | A_REVERSE);
-	addstr($prompt_win, $_[0]);
-	refresh($prompt_win);
-	echo;
-	my $c = getchar($prompt_win);
-	noecho;
-	delwin($prompt_win);
-	return $c;
 }
 
 sub center_text {	# string --> string with leading space to position in center of terminal
