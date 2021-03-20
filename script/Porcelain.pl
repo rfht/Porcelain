@@ -72,6 +72,9 @@
 # - add IRI support (see mailing list)
 # - implement a way to preview links before following them
 # - fix glitch of line continuation showing the internal leading characters e.g. gemini://thfr.info/gemini/modified-trust-verify.gmi list items when scrolling past initial line
+# - fix opening files like *.png
+# - remove need for rpath from sslcat_custom by preloading whatever is needed?
+# - implement fork+exec
 
 use strict;
 use warnings;
@@ -80,6 +83,7 @@ package Porcelain::Main;
 
 $main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
 
+### Modules ###
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 
@@ -91,18 +95,16 @@ use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
 require Net::SSLeay;
-if ($^O eq 'openbsd') {	# TODO: don't load if --nopledge/--nounveil
-	use OpenBSD::Pledge;
-	use OpenBSD::Unveil;
-}
 use Pod::Usage;
 use Porcelain::RandomArt qw(randomart);
+#use Porcelain::Porcelain qw(clean_exit);
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
 use open ':encoding(UTF-8)';
 use subs qw(open_about);
 
+### Variables ###
 my $url;
 my $url_cert;
 my @back_history;
@@ -129,25 +131,10 @@ my $rsa_exponent = 65537;	# 65537 is the 5th prime of Fermat and is the default 
 my $default_rsa_bits = 2048;
 
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
-if (! -d $porcelain_dir) {
-	mkdir $porcelain_dir || die "Unable to create $porcelain_dir";
-}
 my $idents_dir = $porcelain_dir . "/idents";
-if (! -d $idents_dir) {
-	mkdir $idents_dir || die "Unable to create $idents_dir";
-}
 my $hosts_file = $porcelain_dir . "/known_hosts";
 my @known_hosts;
-if (-e $hosts_file) {
-	my $raw_hosts;
-	open(my $fh, '<', $hosts_file) or die "cannot open $hosts_file";
-	{
-		local $/;
-		$raw_hosts = <$fh>;
-	}
-	close($fh);
-	@known_hosts = split('\n', $raw_hosts);
-}
+
 # known_hosts entries
 my $kh_domain;		# domain in known_hosts
 my $kh_algo;		# hash algorithm of known_hosts entry (e.g. SHA-256)
@@ -156,19 +143,9 @@ my $kh_oob_hash;	# hash from out-of-band source
 my $kh_oob_source;	# source of out-of-band hash
 my $kh_oob_date;	# date of last out-of-band update
 
-#my $oob_file = $porcelain_dir . "/oob";		# oob: data on out-of-band verification
-#my @oob_tb;
-#if (-e $oob_file) {
-	#my $raw_oob;
-	#open(my $fh, '<', $oob_file) or die "cannot open $oob_file";
-	#{
-		#local $/;
-		#$raw_oob = <$fh>;
-	#}
-	#close($fh);
-	#@oob_tb = split("\n", $raw_oob);
-#}
+$SIG{INT} = \&caught_sigint;
 
+### Subs ###
 sub clean_exit {
 	delwin($win);
 	delwin($title_win);
@@ -204,14 +181,6 @@ sub gen_client_cert {	# days for cert validity, private key --> return cert
 	Net::SSLeay::X509_sign($x509, $pkey, Net::SSLeay::EVP_sha1());	# TODO: is SHA-1 a reasonable algorithm here?
 	#Net::SSLeay::X509_free($x509);	# TODO: needed here?
 	return $x509;
-}
-
-# TODO: delete?
-sub oob {	# ouf-of-band identity verification
-	# modes:
-	#	1. user enters SHA-256 (or other?)			=> 'user_hash' + SHA-256 + date
-	#	2. user manually compares; confirms match with yes/no	=> 'user_yn' + SHA-256 (copied from server at the time of confirmation) + date
-	#	3. pubkey or hash obtained from third-party		=> resource (e.g. trust list address) + SHA-256 + date
 }
 
 # TODO: merge store_privkey and store_cert into same function (very similar)
@@ -401,7 +370,6 @@ sub center_text {	# string --> string with leading space to position in center o
 sub caught_sigint {
 	clean_exit "Caught SIGINT - aborting...";
 }
-$SIG{INT} = \&caught_sigint;
 
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
 	my $cururl = $_[0];
@@ -849,7 +817,7 @@ sub page_nav {
 				my $match_win_height = max(int($displayrows / 1.25), 12);
 				my $match_win = newwin($match_win_height, $match_win_width, int(($displayrows - $match_win_height) / 2), int(($COLS - $match_win_width) / 2)); 
 				box($match_win, 0, 0);
-				addstr($match_win, 1, 1, $url_cert->fingerprint_sha256);
+				addstr($match_win, 1, 1, $url_cert->fingerprint_sha256());
 				addstr($match_win, 3, 1, randomart(lc($url_cert->fingerprint_sha256() =~ tr/://dr)));
 				addstr($match_win, $match_win_height - 2, 1, "Compare with SHA-256 fingerprint obtained from a credible source. Does it match?");
 				refresh($match_win);
@@ -859,8 +827,12 @@ sub page_nav {
 				}
 				# TODO: store the $sha256 (from $url_cert) in known_hosts
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
-				clean_exit "v: SHA-256";
-				# TODO: compare user-entered SHA-256 to the one from the server.
+				if ($r eq lc($url_cert->fingerprint_sha256() =~ tr/://dr)) {
+					clean_exit "SHA-256 match";
+				} else {
+					clean_exit "SHA-256 mismatch";
+				}
+				# TODO:
 				#	If it matches, should turn green (or stay green).
 				#	If it doesn't match, show warning/error, and ask if user is sure that key entered is correct
 				#	If entered key is correct, host will now be red
@@ -1253,6 +1225,7 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 	return %retval
 }
 
+### Process CLI Options ###
 my $configfile = $porcelain_dir . "/porcelain.conf";
 my $opt_dump =		'';	# dump page to STDOUT
 my $opt_pledge =	'';	# use pledge
@@ -1276,6 +1249,24 @@ GetOptions (
 );
 # Note: auto_version provides '--version' via $main::VERSION
 #	auto_help provides '--help' via Pod::Usage;
+
+### Set up and read config ###
+if (! -d $porcelain_dir) {
+	mkdir $porcelain_dir || die "Unable to create $porcelain_dir";
+}
+if (! -d $idents_dir) {
+	mkdir $idents_dir || die "Unable to create $idents_dir";
+}
+if (-e $hosts_file) {
+	my $raw_hosts;
+	open(my $fh, '<', $hosts_file) or die "cannot open $hosts_file";
+	{
+		local $/;
+		$raw_hosts = <$fh>;
+	}
+	close($fh);
+	@known_hosts = split('\n', $raw_hosts);
+}
 
 # Init: ssl, pledge, unveil
 # TODO: separate out into init sub or multiple subs
@@ -1303,6 +1294,7 @@ if (not $opt_dump) {
 }
 
 if ($opt_pledge) {
+	use OpenBSD::Pledge;
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
 	# TODO: remove cpath by creating the files with the installer?
 	#	sslcat_custom:			rpath inet dns
@@ -1313,6 +1305,7 @@ if ($opt_pledge) {
 }
 
 if ($opt_unveil) {
+	use OpenBSD::Unveil;
 	# TODO: tighten unveil later
 	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";
 	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
