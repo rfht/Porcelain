@@ -8,6 +8,7 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str c_statusline c_title_win c_warn clean_exit);
 
 use Curses;
+use List::Util qw(min max);
 
 sub clean_exit {
 	delwin($Porcelain::Main::win);

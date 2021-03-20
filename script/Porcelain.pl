@@ -128,13 +128,10 @@ our $max_vcols = 1024;	# maximum virtual columns used in curses pads
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
 
-# crypto stuff
-my $default_fp_algo = "SHA-256";
-
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
 our $idents_dir = $porcelain_dir . "/idents";
-my $hosts_file = $porcelain_dir . "/known_hosts";
-my @known_hosts;
+our $hosts_file = $porcelain_dir . "/known_hosts";
+our @known_hosts;
 
 # known_hosts entries
 my $kh_domain;		# domain in known_hosts
@@ -428,51 +425,6 @@ cleanup2:
 	$errs .= Net::SSLeay::print_errs('CTX_free');
 	close Net::SSLeay::SSLCAT_S;
 	return wantarray ? ($got, $errs, $server_cert) : $got;
-}
-
-sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
-	# TODO: add optional notBefore/notAfter checks
-	# TODO: allow temporarily accepting new/changed certificates?
-	my $domainname = $_[1];
-	foreach (@known_hosts) {
-		my $this_host = $_;
-		if (substr($this_host, 0, length($domainname)) eq $domainname) {
-			($kh_domain, $kh_algo, $kh_serv_hash, $kh_oob_hash, $kh_oob_source, $kh_oob_date) = split " ", $this_host;
-			last;
-		}
-	}
-	if ($kh_serv_hash) {
-		# cert is known, does cert still match (TOFU)?
-		#my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
-		if ($kh_algo eq "SHA-256") {
-			if (lc($url_cert->fingerprint_sha256() =~ tr/://dr) eq $kh_serv_hash) {
-				return undef;
-			} else {
-				return "fingerprint mismatch";
-			}
-		}
-		return "unsupported fingerprint algorithm: $kh_algo";
-	}
-	# TODO: allow config setting to automatically accept unknown hosts without prompt
-	$r = '';
-	until ($r =~ /^[SsAa]$/) {
-		$r = c_warn "Unknown host: $domainname. [S]ave to known_hosts and continue, or [A]bort?";
-	}
-	if ($r =~ /^[Aa]$/) {
-		return "Unknown host: $domainname, user aborted";
-	}
-	# New Host. add to @known_hosts and write to $hosts_file
-	($kh_domain, $kh_algo, $kh_serv_hash) = ($domainname, $default_fp_algo, lc($url_cert->fingerprint_sha256() =~ tr/://dr));
-	open (my $fh, '>>', $hosts_file) or die "Could not open file $hosts_file";
-	if ($default_fp_algo eq "SHA-256") {
-		my $kh_line = $kh_domain . ' ' . $kh_algo . ' ' . $kh_serv_hash;
-		push @known_hosts, $kh_line;
-		$fh->print($kh_line . "\n");
-		close $fh;
-		return undef;
-	}
-	close $fh;
-	return "unsupported fingerprint algorithm: $default_fp_algo";
 }
 
 sub downloader {	# $body --> 0: success, >0: failure
