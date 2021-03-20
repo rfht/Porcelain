@@ -257,12 +257,7 @@ sub page_nav {
 			$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
 		}
 		if ($c eq 'H') {	# show history
-			#my $histwin = c_fullscr join("\n", $url . " <-- CURRENT URL", reverse(@back_history)), "History";
-			#undef $c;
-			#$c = getchar;
-			#delwin($histwin);
 			open_about "about:history";
-			#$update_viewport = 1;
 			return;
 		} elsif ($c eq 'i') {	# basic info (position in document, etc.	# TODO: expand, e.g. URL
 			my $linesfrom = $viewfrom + 1;
