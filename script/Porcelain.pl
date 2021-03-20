@@ -72,7 +72,7 @@
 # - implement a way to preview links before following them
 # - fix glitch of line continuation showing the internal leading characters e.g. gemini://thfr.info/gemini/modified-trust-verify.gmi list items when scrolling past initial line
 # - fix opening files like *.png
-# - remove need for rpath from sslcat_custom by preloading whatever is needed?
+# - remove need for rpath from sslcat_porcelain by preloading whatever is needed?
 # - implement fork+exec
 # - is 'our' instead of 'my' really needed for variables used by modules? e.g. $status_win
 # - use sub lines more consistently
@@ -367,50 +367,6 @@ sub gmirender {	# viewfrom, viewto, text/gemini (as array of lines!) => formatte
 		move($win, $y + 1, 0);
 	}
 	refresh($win);
-}
-
-# see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
-sub sslcat_custom { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
-	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
-	my ($ctx, $ssl, $got, $errs, $written);
-
-	($got, $errs) = Net::SSLeay::open_proxy_tcp_connection($dest_serv, $port);
-	return (wantarray ? (undef, $errs) : undef) unless $got;
-
-	### SSL negotiation
-	$ctx = Net::SSLeay::new_x_ctx();
-	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_new') or !$ctx;
-	Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL);
-	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_set_options');
-	#warn "Cert `$crt_path' given without key" if $crt_path && !$key_path;
-	Net::SSLeay::set_cert_and_key($ctx, $crt_path, $key_path) if $crt_path;
-	$ssl = Net::SSLeay::new($ctx);
-	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_new') or !$ssl;
-
-	# set up SNI (Server Name Indication), see specification item 4
-	Net::SSLeay::set_tlsext_host_name($ssl, $dest_serv) || die "failed to set SSL host name for Server Name Indication";
-
-	Net::SSLeay::set_fd($ssl, fileno(Net::SSLeay::SSLCAT_S));
-	goto cleanup if $errs = Net::SSLeay::print_errs('set_fd');
-	$got = Net::SSLeay::connect($ssl);
-	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_connect');
-	my $server_cert = Net::SSLeay::get_peer_certificate($ssl);
-	Net::SSLeay::print_errs('get_peer_certificate');
-
-	### Connected. Exchange some data (doing repeated tries if necessary).
-	($written, $errs) = Net::SSLeay::ssl_write_all($ssl, $out_message);
-	goto cleanup unless $written;
-	sleep $Net::SSLeay::slowly if $Net::SSLeay::slowly;  # Closing too soon can abort broken servers # TODO: remove?
-	($got, $errs) = Net::SSLeay::ssl_read_all($ssl);
-	CORE::shutdown Net::SSLeay::SSLCAT_S, 1;  # Half close --> No more output, send EOF to server
-cleanup:
-	Net::SSLeay::free ($ssl);
-	$errs .= Net::SSLeay::print_errs('SSL_free');
-cleanup2:
-	Net::SSLeay::CTX_free ($ctx);
-	$errs .= Net::SSLeay::print_errs('CTX_free');
-	close Net::SSLeay::SSLCAT_S;
-	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
 sub downloader {	# $body --> 0: success, >0: failure
@@ -759,7 +715,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 	# TODO: warn/error if $certpath but not $keypath
 
 	undef $url_cert;
-	(my $raw_response, my $err, $url_cert)= sslcat_custom($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
+	(my $raw_response, my $err, $url_cert)= sslcat_porcelain($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
 	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
@@ -1039,7 +995,7 @@ if ($opt_pledge) {
 	use OpenBSD::Pledge;
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
 	# TODO: remove cpath by creating the files with the installer?
-	#	sslcat_custom:			rpath inet dns
+	#	sslcat_porcelain:			rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
 	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
@@ -1052,7 +1008,7 @@ if ($opt_unveil) {
 	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";
 	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 	unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
-	unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat(r)
+	unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat_porcelain(r)
 	unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
 	unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
 	if (-f $porcelain_dir . '/open.conf') {

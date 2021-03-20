@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(gen_client_cert gen_identity gen_privkey store_cert store_privkey validate_cert);
+our @EXPORT = qw(gen_client_cert gen_identity gen_privkey store_cert store_privkey validate_cert sslcat_porcelain);
 
 use subs qw(c_warn);
 
@@ -112,6 +112,50 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 	}
 	close $fh;
 	return "unsupported fingerprint algorithm: $default_fp_algo";
+}
+
+# see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
+sub sslcat_porcelain { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
+	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
+	my ($ctx, $ssl, $got, $errs, $written);
+
+	($got, $errs) = Net::SSLeay::open_proxy_tcp_connection($dest_serv, $port);
+	return (wantarray ? (undef, $errs) : undef) unless $got;
+
+	### SSL negotiation
+	$ctx = Net::SSLeay::new_x_ctx();
+	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_new') or !$ctx;
+	Net::SSLeay::CTX_set_options($ctx, &Net::SSLeay::OP_ALL);
+	goto cleanup2 if $errs = Net::SSLeay::print_errs('CTX_set_options');
+	#warn "Cert `$crt_path' given without key" if $crt_path && !$key_path;
+	Net::SSLeay::set_cert_and_key($ctx, $crt_path, $key_path) if $crt_path;
+	$ssl = Net::SSLeay::new($ctx);
+	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_new') or !$ssl;
+
+	# set up SNI (Server Name Indication), see specification item 4
+	Net::SSLeay::set_tlsext_host_name($ssl, $dest_serv) || die "failed to set SSL host name for Server Name Indication";
+
+	Net::SSLeay::set_fd($ssl, fileno(Net::SSLeay::SSLCAT_S));
+	goto cleanup if $errs = Net::SSLeay::print_errs('set_fd');
+	$got = Net::SSLeay::connect($ssl);
+	goto cleanup if $errs = Net::SSLeay::print_errs('SSL_connect');
+	my $server_cert = Net::SSLeay::get_peer_certificate($ssl);
+	Net::SSLeay::print_errs('get_peer_certificate');
+
+	### Connected. Exchange some data (doing repeated tries if necessary).
+	($written, $errs) = Net::SSLeay::ssl_write_all($ssl, $out_message);
+	goto cleanup unless $written;
+	sleep $Net::SSLeay::slowly if $Net::SSLeay::slowly;  # Closing too soon can abort broken servers # TODO: remove?
+	($got, $errs) = Net::SSLeay::ssl_read_all($ssl);
+	CORE::shutdown Net::SSLeay::SSLCAT_S, 1;  # Half close --> No more output, send EOF to server
+cleanup:
+	Net::SSLeay::free ($ssl);
+	$errs .= Net::SSLeay::print_errs('SSL_free');
+cleanup2:
+	Net::SSLeay::CTX_free ($ctx);
+	$errs .= Net::SSLeay::print_errs('CTX_free');
+	close Net::SSLeay::SSLCAT_S;
+	return wantarray ? ($got, $errs, $server_cert) : $got;
 }
 
 1;
