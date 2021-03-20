@@ -10,7 +10,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(randomart);
+our @EXPORT = qw(randomart);
 
 my $base = 8;
 my %size = (

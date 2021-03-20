@@ -96,9 +96,9 @@ use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	
 use List::Util qw(min max);
 require Net::SSLeay;
 use Pod::Usage;
-use Porcelain::CursesUI qw(clean_exit);
-use Porcelain::Porcelain qw(gen_client_cert gen_privkey);
-use Porcelain::RandomArt qw(randomart);
+use Porcelain::CursesUI; # qw(clean_exit);
+use Porcelain::Porcelain; # qw(gen_client_cert gen_privkey);
+use Porcelain::RandomArt; # qw(randomart);
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 

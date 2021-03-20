@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(gen_client_cert gen_privkey);
+our @EXPORT = qw(gen_client_cert gen_privkey);
 
 my $default_rsa_bits = 2048;
 my $rsa_exponent = 65537;

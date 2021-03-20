@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(clean_exit);
+our @EXPORT = qw(clean_exit);
 
 use Curses;
 
