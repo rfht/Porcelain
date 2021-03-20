@@ -96,8 +96,9 @@ use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	
 use List::Util qw(min max);
 require Net::SSLeay;
 use Pod::Usage;
-use Porcelain::RandomArt qw(randomart);
+use Porcelain::CursesUI qw(clean_exit);
 use Porcelain::Porcelain qw(gen_client_cert gen_privkey);
+use Porcelain::RandomArt qw(randomart);
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
@@ -113,8 +114,8 @@ my %open_with;
 my @links;		# array containing links in the pages
 my @last_links;		# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
-my $win;
-my $title_win;
+our $win;
+our $title_win;
 my $status_win;
 my $searchstr = '';		# search string
 my @searchlns;		# lines with matches for search 
@@ -144,15 +145,6 @@ my $kh_oob_date;	# date of last out-of-band update
 $SIG{INT} = \&caught_sigint;
 
 ### Subs ###
-sub clean_exit {
-	delwin($win);
-	delwin($title_win);
-	endwin;
-	if ($_[0]) {
-		print $_[0] . "\n";
-	}
-	exit;
-}
 
 # TODO: merge store_privkey and store_cert into same function (very similar)
 sub store_privkey {	# privkey, filename -->
