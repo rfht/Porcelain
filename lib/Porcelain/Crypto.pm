@@ -1,4 +1,4 @@
-package Porcelain::Porcelain;
+package Porcelain::Crypto;
 
 use strict;
 use warnings;
