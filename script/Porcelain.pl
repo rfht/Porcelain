@@ -15,6 +15,7 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 # TODO:
+# - add Copyright/license to modules
 # - look up pledge and unveil examples and best practices
 # - keep testing with gemini://gemini.conman.org/test/torture/
 # - search "TODO" in comments
@@ -490,26 +491,15 @@ if (not $opt_dump) {
 	init_pair(7, COLOR_RED, COLOR_WHITE);
 }
 
-if ($opt_pledge) {
-	use OpenBSD::Pledge;
-	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
-	# TODO: remove cpath by creating the files with the installer?
-	#	sslcat_porcelain:			rpath inet dns
-	#	system (for external programs)	exec proc
-	#	Curses				tty
-	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
-	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec unveil ) ) || die "Unable to pledge: $!";
-}
-
 if ($opt_unveil) {
 	use OpenBSD::Unveil;
 	# TODO: tighten unveil later
-	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";
+	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
 	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
 	unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
 	unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat_porcelain(r)
 	unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
-	unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";
+	unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
 	if (-f $porcelain_dir . '/open.conf') {
 		%open_with = readconf($porcelain_dir . '/open.conf');
 	}
@@ -519,6 +509,18 @@ if ($opt_unveil) {
 		unveil( $unveil_bin, "x") || die "Unable to unveil: $!";
 	}
 	unveil() || die "Unable to lock unveil: $!";
+}
+
+if ($opt_pledge) {
+	use OpenBSD::Pledge;
+	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
+	# TODO: remove cpath by creating the files with the installer or before unveil/pledge?
+	# TODO: can tty pledge be removed after Curses has been initialized?
+	#	sslcat_porcelain:		rpath inet dns
+	#	system (for external programs)	exec proc
+	#	Curses				tty
+	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
+	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec ) ) || die "Unable to pledge: $!";
 }
 
 if (scalar @ARGV == 0) {	# no URI passed
