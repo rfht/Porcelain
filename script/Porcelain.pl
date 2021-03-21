@@ -115,6 +115,8 @@ use subs qw(open_about);
 
 ### Variables ###
 my $rq_addr;		# address of the request (URI, IRI, local, internal)
+my @stdin;		# only used if pipe/STDIN are used
+my ($vol, $dir, $fil);	# for local file location
 our $host_cert;
 our @back_history;
 our @forward_history;
@@ -470,6 +472,31 @@ if (-e $hosts_file) {
 	@known_hosts = split('\n', $raw_hosts);
 }
 
+### Determine Starting Address ###
+if (not defined $file_in) {		# most common case - no local file passed
+	if (scalar @ARGV == 0) {	# no address and no file passed => open default address
+		$rq_addr = "gemini://gemini.circumlunar.space/";	# TODO: about:new? Allow setting home page? Resume session?
+	} else {
+		if (not $ARGV[0] =~ m{://}) {
+			$rq_addr = 'gemini://' . $ARGV[0];
+		} else {
+			$rq_addr = "$ARGV[0]";
+		}
+	}
+} else {
+	if ($file_in ne "-") {
+		die "No such file: $file_in" unless (-f $file_in);		# ensure $file_in is a plain file
+		$rq_addr = "file:" . abs_path(File::Spec->canonpath($file_in));	# the file URI scheme 'file:...' is only used internally
+		($vol, $dir, $fil) = File::Spec->splitpath(abs_path(File::Spec->canonpath($file_in)));
+	} else {
+		$rq_addr = "-";		# TODO: redundant? just pass @stdin instead of rq_addr?
+		while (<>) {
+			chomp;
+			push @stdin, $_;
+		}
+	}
+}
+
 ### Init: SSLeay, Curses ###
 Net::SSLeay::initialize();	# initialize ssl library once
 
@@ -493,46 +520,26 @@ if (not $opt_dump) {
 	init_pair(7, COLOR_RED, COLOR_WHITE);
 }
 
-### Determine Starting Address ###
-if (not defined $file_in) {		# most common case - no local file passed
-	if (scalar @ARGV == 0) {	# no address and no file passed => open default address
-		$rq_addr = "gemini://gemini.circumlunar.space/";	# TODO: about:new? Allow setting home page? Resume session?
-	} else {
-		if (not $ARGV[0] =~ m{://}) {
-			$rq_addr = 'gemini://' . $ARGV[0];
-		} else {
-			$rq_addr = "$ARGV[0]";
-		}
-	}
-} else {
-	if ($file_in ne "-") {
-		die "No such file: $file_in" unless (-f $file_in);		# ensure $file_in is a plain file
-		$rq_addr = "file:" . abs_path(File::Spec->canonpath($file_in));	# the file URI scheme 'file:...' is only used internally
-	} else {
-		$rq_addr = "-";
-	}
-}
-
 ### Secure: unveil, pledge ###
 if ($opt_unveil) {
 	use OpenBSD::Unveil;
 	# TODO: tighten unveil later
-	unveil( "$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
-	unveil( "/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
-	unveil( "/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
-	unveil( "/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat_porcelain(r)
-	unveil( "/etc/termcap", "r") || die "Unable to unveil: $!";
-	unveil( "$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
+	unveil("$ENV{'HOME'}/Downloads", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
+	unveil("/usr/local/libdata/perl5/site_perl/amd64-openbsd/auto/Net/SSLeay", "r") || die "Unable to unveil: $!";
+	unveil("/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
+	unveil("/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat_porcelain(r)
+	unveil("/etc/termcap", "r") || die "Unable to unveil: $!";
+	unveil("$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
 	if (-f $porcelain_dir . '/open.conf') {
 		%open_with = readconf($porcelain_dir . '/open.conf');
 	}
 	if (defined $file_in && $file_in ne "-") {
-		unveil( (File::Spec->splitpath(abs_path(File::Spec->canonpath($file_in))))[1], "r") || die "Unable to unveil: $!";
+		unveil($dir, "r") || die "Unable to unveil: $!";
 	}
 	for my $v (values %open_with) {
 		# TODO: implement paths with whitespace, eg. in quotes? like: "/home/user/these programs/launch"
 		my $unveil_bin = $v =~ s/\s.*$//r;	# this way parameters to the programs will not mess up the call.
-		unveil( $unveil_bin, "x") || die "Unable to unveil: $!";
+		unveil($unveil_bin, "x") || die "Unable to unveil: $!";
 	}
 	unveil() || die "Unable to lock unveil: $!";
 }
@@ -549,8 +556,8 @@ if ($opt_pledge) {
 }
 
 ### Request loop ###
-while (defined $rq_addr) {	# $rq_addr must be fully qualified: 'protocol:...' or '-'
-	$rq_addr = request $rq_addr;
+while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
+	$rq_addr = request $rq_addr, \@stdin;
 }
 
 clean_exit "Bye...";

@@ -18,6 +18,7 @@ sub downloader {	# $url, $body --> 0: success, >0: failure
 	$dl_file = $ENV{'HOME'} . "/Downloads/" . $dl_file;
 	Porcelain::CursesUI::c_prompt_ch "Downloading $dlurl ...";
 	open my $fh, '>:raw', $dl_file or Porcelain::CursesUI::clean_exit "error opening $dl_file for writing";
+	binmode($fh);
 	print $fh $dlcont or Porcelain::CursesUI::clean_exit "error writing to file $dl_file";
 	close $fh;
 	return 0;
