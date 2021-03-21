@@ -5,46 +5,96 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(request);
+our @EXPORT = qw(init_request request);
 
 use Porcelain::CursesUI;	# for displaying status updates and prompts
 
+my @supported_protocols = ("gemini", "file", "about");
+
+# about pages
+my @bookmarks;
+my @config;
+my @help;
+my @history;
+my @pod;
+my @stdin;
+my @subscriptions;
+
+my %habout = (			# hash of all about addresses
+	"bookmarks"	=> \@bookmarks,
+	"config"	=> \@config,
+	"help"		=> \@help,
+	"history"	=> \@history,
+	"man"		=> \@pod,
+	"pod"		=> \@pod,
+	"stdin"		=> \@stdin,
+	"subscriptions"	=> \@subscriptions,
+);
+
+sub conn_parse {	# parse connection. args: address --> return: connection type, address (without protocol) or content array
+	# Allowed patterns:
+	# "^gemini://", "^file:/", "^about:", "^-$"
+	# Others will need to processed separately
+	# Note that addresses _without_ protocol are not allowed.
+	my ($addr) = @_;
+	my ($ct, $ad);		# connection, address
+	my ($prot, $target);	# protocol, target
+	if ($addr eq "-") {
+		($prot, $target) = ("about", "stdin");
+	} elsif ($addr =~ m{:}) {
+		my @splitaddr = split ":", $addr;
+		$prot = shift @splitaddr;
+		$target = join ":", @splitaddr;
+	}
+
+	# check if the protocol is supported
+	my %supp = map { $_ => 1 } @supported_protocols;	# turn array into hash; to check if element is contained in it
+	if (exists($supp{$prot})) {
+		if (($prot eq "gemini" || $prot eq "file") && substr($target, 0, 2) eq "//") {	# remove leading "//" from gemini address
+			$target = substr $target, 2;
+		}
+		return ($prot, $target);
+	} else {
+		# not supported. Return "unsupported" and the full address
+		return ("unsupported", $addr);
+	}
+}
+
+sub init_request {
+	@pod = @{$_[0]};
+}
+
 sub request {	# first line to process all requests for an address. params: address --> return: new address
 		# the new address that is returned will be fed into request again; return undef to exit
-	my ($addr, $stdin) = @_;
-	clean_exit "request: " . $addr . ", stdin: " . ${$stdin}[0];
+	(my $rq_addr, my $raw_stdin) = @_;
+	@stdin = @$raw_stdin;			# TODO: is this step really needed?
+	my @content;
 
 	### Determine connection type and obtain content ###
-	my $ct = conn_type $addr;
-	if ($ct eq 'internal') {	# about:...
+	my ($conn, $addr) = conn_parse $rq_addr;
+	if ($conn eq "about") {	# about:..., stdin
 		# set content
-	} elsif ($ct eq 'stdin') {
-		# set content
-	} elsif ($ct eq 'local') {
+		#clean_exit scalar(@{$habout{$addr}});
+		@content = @{$habout{$addr}};
+	} elsif ($conn eq "file") {	# local file
 		# open file
 		# check MIME type
-	} elsif ($ct eq 'gemini') {
+	} elsif ($conn eq "gemini") {
 		# TLS connection (check if TLS 1.3 needs to be enforced)
 		# TOFU
 		# opt. client cert
 		# Process response header
 		# if SUCCESS (2x), check MIME type, set content if compatible
-	} elsif ($ct eq 'other') {
+	} elsif ($conn eq "unsupported") {
 		# check if handler registered; if so, invoke handler
 	} else {
-		die "unable to process connection type: $ct";
+		die "unable to process connection type: $conn";	# should not be reachable
 	}
+	clean_exit "content length: " . scalar(@content) . "\n" . $content[0];
 
 	### Render Content ###
 
 	### Navigation ###
-}
-
-sub conn_type {	# args: address --> return: connection type
-	# Allowed patterns:
-	# "^gemini://", "^file:/", "^about:", "^-$"
-	# Others will need to processed separately
-	# Note that addresses _without_ protocol are not allowed.
 }
 
 1;

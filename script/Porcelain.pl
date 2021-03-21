@@ -477,7 +477,7 @@ if (not defined $file_in) {		# most common case - no local file passed
 	if (scalar @ARGV == 0) {	# no address and no file passed => open default address
 		$rq_addr = "gemini://gemini.circumlunar.space/";	# TODO: about:new? Allow setting home page? Resume session?
 	} else {
-		if (not $ARGV[0] =~ m{://}) {
+		if (not $ARGV[0] =~ m{:}) {
 			$rq_addr = 'gemini://' . $ARGV[0];
 		} else {
 			$rq_addr = "$ARGV[0]";
@@ -497,7 +497,7 @@ if (not defined $file_in) {		# most common case - no local file passed
 	}
 }
 
-### Init: SSLeay, Curses ###
+### Init: SSLeay, Curses, about pages ###
 Net::SSLeay::initialize();	# initialize ssl library once
 
 if (not $opt_dump) {
@@ -519,6 +519,13 @@ if (not $opt_dump) {
 	init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
 	init_pair(7, COLOR_RED, COLOR_WHITE);
 }
+
+# Make pod2usage text usable in about:pod/about:man
+open my $fh, '>', \my $text;
+pod2usage(-output => $fh, -exitval => 'NOEXIT', -verbose => 2);
+close $fh;
+my @pod = split "\n", $text;
+undef $text;
 
 ### Secure: unveil, pledge ###
 if ($opt_unveil) {
@@ -556,6 +563,8 @@ if ($opt_pledge) {
 }
 
 ### Request loop ###
+
+init_request \@pod;
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;
 }
