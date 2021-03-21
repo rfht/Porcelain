@@ -38,10 +38,10 @@ sub request {	# first line to process all requests for an address. params: addre
 }
 
 sub conn_type {	# args: address --> return: connection type
-	# TODO: how to reliably differentiate between gemini location omitting 'gemini://' and local file
-	# gemini connection
-	"^gemini://", "^file:///", "^about:"
-
+	# Allowed patterns:
+	# "^gemini://", "^file:/", "^about:", "^-$"
+	# Others will need to processed separately
+	# Note that addresses _without_ protocol are not allowed.
 }
 
 1;

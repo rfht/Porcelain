@@ -94,8 +94,10 @@ use lib "$FindBin::Bin/../lib";
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
 use Crypt::OpenSSL::X509;
 use Curses;
+use Cwd qw(abs_path);
 use DateTime;
 use Encode qw(encode decode);
+use File::Spec;
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
 use Net::SSLeay;
@@ -445,7 +447,7 @@ GetOptions (
 		"help|h"	=> sub { Getopt::Long::HelpMessage() },
 		"man|m"		=> sub { pod2usage(-exitval => 0, -verbose => 2) },
 		"pledge!"	=> \$opt_pledge,	# --nopledge disables
-		'file|f=s"'	=> \$file_in,
+		"file|f=s"	=> \$file_in,
 		"unveil!"	=> \$opt_unveil,	# --nounveil disables
 		"version|v"	=> sub { Getopt::Long::VersionMessage() },
 );
@@ -491,6 +493,26 @@ if (not $opt_dump) {
 	init_pair(7, COLOR_RED, COLOR_WHITE);
 }
 
+### Determine Starting Address ###
+if (not defined $file_in) {		# most common case - no local file passed
+	if (scalar @ARGV == 0) {	# no address and no file passed => open default address
+		$rq_addr = "gemini://gemini.circumlunar.space/";	# TODO: about:new? Allow setting home page? Resume session?
+	} else {
+		if (not $ARGV[0] =~ m{://}) {
+			$rq_addr = 'gemini://' . $ARGV[0];
+		} else {
+			$rq_addr = "$ARGV[0]";
+		}
+	}
+} else {
+	if ($file_in ne "-") {
+		die "No such file: $file_in" unless (-f $file_in);		# ensure $file_in is a plain file
+		$rq_addr = "file:" . abs_path(File::Spec->canonpath($file_in));	# the file URI scheme 'file:...' is only used internally
+	} else {
+		$rq_addr = "-";
+	}
+}
+
 ### Secure: unveil, pledge ###
 if ($opt_unveil) {
 	use OpenBSD::Unveil;
@@ -504,6 +526,9 @@ if ($opt_unveil) {
 	if (-f $porcelain_dir . '/open.conf') {
 		%open_with = readconf($porcelain_dir . '/open.conf');
 	}
+	if (defined $file_in && $file_in ne "-") {
+		unveil( (File::Spec->splitpath(abs_path(File::Spec->canonpath($file_in))))[1], "r") || die "Unable to unveil: $!";
+	}
 	for my $v (values %open_with) {
 		# TODO: implement paths with whitespace, eg. in quotes? like: "/home/user/these programs/launch"
 		my $unveil_bin = $v =~ s/\s.*$//r;	# this way parameters to the programs will not mess up the call.
@@ -511,7 +536,6 @@ if ($opt_unveil) {
 	}
 	unveil() || die "Unable to lock unveil: $!";
 }
-
 if ($opt_pledge) {
 	use OpenBSD::Pledge;
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
@@ -524,19 +548,8 @@ if ($opt_pledge) {
 	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec ) ) || die "Unable to pledge: $!";
 }
 
-### Determine Starting Address ###
-if (scalar @ARGV == 0) {	# no URI passed
-	$rq_addr = "gemini://gemini.circumlunar.space/";
-} else {
-	if (not $ARGV[0] =~ m{://}) {
-		$rq_addr = 'gemini://' . $ARGV[0];
-	} else {
-		$rq_addr = "$ARGV[0]";
-	}
-}
-
 ### Request loop ###
-while (defined $rq_addr) {
+while (defined $rq_addr) {	# $rq_addr must be fully qualified: 'protocol:...' or '-'
 	$rq_addr = request $rq_addr;
 }
 
@@ -566,24 +579,27 @@ Options:
 =head1 DESCRIPTION
 
 B<Porcelain> is a text-based browser for gemini pages. It uses
-OpenBSD's pledge and unveil technologies. The goal of Porcelain is to
+OpenBSD's pledge and unveil technologies. The goal of B<Porcelain> is to
 be a "spec-preserving" gemini browser, meaning no support for
 non-spec extension attempts (like favicons, metadata). Automatic opening
 or inline display of non-gemini/text content is opt-in.
 
-If you open a URL (either passed from CLI or opened in Porcelain),
-Porcelain will determine the protocol for the connection and try to
-obtain the resource. The 'gemini' and 'file' protocols are supported
+If you open a URL (either passed from CLI or opened in B<Porcelain>),
+B<Porcelain> will determine the protocol for the connection and try to
+obtain the resource. The 'gemini' protocols are supported
 by default. You can specify applications to open other protocols like
 'https' in ~/.porcelain/open.conf.
 
-If the protocol is supported, Porcelain will try to determine the MIME
-type of the resource. MIME type text/gemini is supported natively.
+If the protocol is supported, B<Porcelain> will try to determine the
+MIME type of the resource. MIME type text/gemini is supported natively.
 Other MIME types like 'image/png' can be opened with external programs
 specified in ~/.porcelain/open.conf.
 
-If the MIME type is not known or cannot be determined, Porcelain will
+If the MIME type is not known or cannot be determined, B<Porcelain> will
 try to find the extension (like '.gmi') in ~/.porcelain/open.conf.
+
+If the --file/-f option is used, B<Porcelain> will unveil the directory
+containing the file (including all subdirectories).
 
 =head2 KEYS
 
