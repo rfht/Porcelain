@@ -94,9 +94,9 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 
 sub c_title_win {	# modify $title_win. in: domainname
 	my $sec_status = undef;
-	if (defined $Porcelain::Main::url_cert) {
+	if (defined $Porcelain::Main::host_cert) {
 		# TODO: simplify the branching; find a way to combine the "red" results
-		if (lc($Porcelain::Main::url_cert->fingerprint_sha256() =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
+		if (lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
 			if ($Porcelain::Main::kh_oob_hash) {
 				if ($Porcelain::Main::kh_serv_hash eq $Porcelain::Main::kh_oob_hash) {			# green: all match
 					bkgd($Porcelain::Main::title_win, COLOR_PAIR(4) | A_REVERSE);
@@ -105,7 +105,7 @@ sub c_title_win {	# modify $title_win. in: domainname
 					bkgd($Porcelain::Main::title_win, COLOR_PAIR(7) | A_REVERSE);
 					$sec_status = "SERVER IDENTITY MISMATCH (last update on $Porcelain::Main::kh_oob_date). CAUTION!";
 				}
-			} else {							# yellow: url_cert and kh_serv match; no oob
+			} else {							# yellow: host_cert and kh_serv match; no oob
 				bkgd($Porcelain::Main::title_win, COLOR_PAIR(1) | A_REVERSE);
 				$sec_status = "TOFU okay; server identity not confirmed";
 			}
@@ -119,7 +119,7 @@ sub c_title_win {	# modify $title_win. in: domainname
 		$sec_status = "Local File";
 	}
 	clear($Porcelain::Main::title_win);
-	addstr($Porcelain::Main::title_win, $Porcelain::Main::url . "\t" . $sec_status);
+	addstr($Porcelain::Main::title_win, $Porcelain::Main::rq_addr . "\t" . $sec_status);
 	refresh($Porcelain::Main::title_win);
 }
 

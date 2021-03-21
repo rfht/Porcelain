@@ -84,7 +84,7 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 		# cert is known, does cert still match (TOFU)?
 		#my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
 		if ($Porcelain::Main::kh_algo eq "SHA-256") {
-			if (lc($Porcelain::Main::url_cert->fingerprint_sha256() =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
+			if (lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
 				return undef;
 			} else {
 				return "fingerprint mismatch";
@@ -101,7 +101,7 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 		return "Unknown host: $domainname, user aborted";
 	}
 	# New Host. add to @known_hosts and write to $hosts_file
-	($Porcelain::Main::kh_domain, $Porcelain::Main::kh_algo, $Porcelain::Main::kh_serv_hash) = ($domainname, $default_fp_algo, lc($Porcelain::Main::url_cert->fingerprint_sha256() =~ tr/://dr));
+	($Porcelain::Main::kh_domain, $Porcelain::Main::kh_algo, $Porcelain::Main::kh_serv_hash) = ($domainname, $default_fp_algo, lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr));
 	open (my $fh, '>>', $Porcelain::Main::hosts_file) or die "Could not open file $Porcelain::Main::hosts_file";
 	if ($default_fp_algo eq "SHA-256") {
 		my $kh_line = $Porcelain::Main::kh_domain . ' ' . $Porcelain::Main::kh_algo . ' ' . $Porcelain::Main::kh_serv_hash;

@@ -45,7 +45,7 @@ sub page_nav {
 	my $update_viewport;
 	my $reflow_text = 1;
 
-	my $domainname = Porcelain::Main::gem_host($Porcelain::Main::url);
+	my $domainname = Porcelain::Main::gem_host($Porcelain::Main::rq_addr);
 
 	while (1) {
 		if (defined $Porcelain::Main::status_win) {
@@ -88,45 +88,45 @@ sub page_nav {
 			#	- type
 			#	- date last renewed
 			#	- time since last renewal
-			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $Porcelain::Main::url);
+			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $Porcelain::Main::rq_addr);
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
-			push @info, "\t\t\tSubject:\t\t" . $Porcelain::Main::url_cert->subject();
-			#push @info, "\t\t\tSubject Hash:\t\t" . $Porcelain::Main::url_cert->hash();
-			push @info, "\t\t\tEmail:\t\t\t" . $Porcelain::Main::url_cert->email();
-			push @info, "\t\t\tIssuer:\t\t\t" . $Porcelain::Main::url_cert->issuer();
-			#push @info, "\t\t\tIssuer Hash:\t" . $Porcelain::Main::url_cert->issuer_hash();
-			push @info, "\t\t\tNot Valid Before:\t" . $Porcelain::Main::url_cert->notBefore();
-			push @info, "\t\t\tNot Valid After:\t" . $Porcelain::Main::url_cert->notAfter();
-			#push @info, "\t\t\tModulus:\t\t" . $Porcelain::Main::url_cert->modulus();		# TODO: how useful is modulus? Exponent?
-			#push @info, "\t\t\tExponent:\t\t" . $Porcelain::Main::url_cert->exponent();
-			push @info, "\t\t\tFingerprint SHA-256:\n\t\t\t" . $Porcelain::Main::url_cert->fingerprint_sha256(); # TODO: improve formatting
-			push @info, "\t\t\tCertificate Version:\t" . $Porcelain::Main::url_cert->version();
-			push @info, "\t\t\tSignature Algorithm:\t" . $Porcelain::Main::url_cert->sig_alg_name();
-			push @info, "\t\t\tPublic Key Algorithm:\t" . $Porcelain::Main::url_cert->key_alg_name();
-			if ($Porcelain::Main::url_cert->is_selfsigned()) {
-				push @info, "\t\t\tSelf-signed?\t\tYes"; } else { push @info, "\t\t\tSelf-signed?:\t\tNo"; } push @info, "\n\n" . randomart(lc($Porcelain::Main::url_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = Porcelain::CursesUI::c_fullscr join("\n", @info), "Info";
+			push @info, "\t\t\tSubject:\t\t" . $Porcelain::Main::host_cert->subject();
+			#push @info, "\t\t\tSubject Hash:\t\t" . $Porcelain::Main::host_cert->hash();
+			push @info, "\t\t\tEmail:\t\t\t" . $Porcelain::Main::host_cert->email();
+			push @info, "\t\t\tIssuer:\t\t\t" . $Porcelain::Main::host_cert->issuer();
+			#push @info, "\t\t\tIssuer Hash:\t" . $Porcelain::Main::host_cert->issuer_hash();
+			push @info, "\t\t\tNot Valid Before:\t" . $Porcelain::Main::host_cert->notBefore();
+			push @info, "\t\t\tNot Valid After:\t" . $Porcelain::Main::host_cert->notAfter();
+			#push @info, "\t\t\tModulus:\t\t" . $Porcelain::Main::host_cert->modulus();		# TODO: how useful is modulus? Exponent?
+			#push @info, "\t\t\tExponent:\t\t" . $Porcelain::Main::host_cert->exponent();
+			push @info, "\t\t\tFingerprint SHA-256:\n\t\t\t" . $Porcelain::Main::host_cert->fingerprint_sha256(); # TODO: improve formatting
+			push @info, "\t\t\tCertificate Version:\t" . $Porcelain::Main::host_cert->version();
+			push @info, "\t\t\tSignature Algorithm:\t" . $Porcelain::Main::host_cert->sig_alg_name();
+			push @info, "\t\t\tPublic Key Algorithm:\t" . $Porcelain::Main::host_cert->key_alg_name();
+			if ($Porcelain::Main::host_cert->is_selfsigned()) {
+				push @info, "\t\t\tSelf-signed?\t\tYes"; } else { push @info, "\t\t\tSelf-signed?:\t\tNo"; } push @info, "\n\n" . randomart(lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = Porcelain::CursesUI::c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
 			delwin($infowin);
 			$update_viewport = 1;
 		} elsif ($c eq 'q') {	# quit
-			undef $Porcelain::Main::url;
+			undef $Porcelain::Main::rq_addr;
 			return;
 		} elsif ($c eq 'r') {	# go to domain root
-			$Porcelain::Main::url = "gemini://" . gem_host($Porcelain::Main::url);
+			$Porcelain::Main::rq_addr = "gemini://" . gem_host($Porcelain::Main::rq_addr);
 			return;
 		} elsif ($c eq 'R') {	# reload page
 			return;
 		} elsif ($c eq 'u') {	# up in directories on domain
-			my $slashcount = ($Porcelain::Main::url =~ tr|/||);
+			my $slashcount = ($Porcelain::Main::rq_addr =~ tr|/||);
 			if ($slashcount > 3) {	# only go up if not at root of the domain
-				$Porcelain::Main::url =~ s|[^/]+/[^/]*$||;
+				$Porcelain::Main::rq_addr =~ s|[^/]+/[^/]*$||;
 				return;
 			}
 			# TODO: warn if can't go up
 		} elsif ($c eq 'v') {	# verify server identity
-			my $domain = gem_host $Porcelain::Main::url;
+			my $domain = gem_host $Porcelain::Main::rq_addr;
 			# ask for SHA-256, manual confirmation, or URL
 			undef $r;
 			until ($r) {
@@ -139,17 +139,17 @@ sub page_nav {
 				my $match_win_height = max(int($displayrows / 1.25), 12);
 				my $match_win = newwin($match_win_height, $match_win_width, int(($displayrows - $match_win_height) / 2), int(($COLS - $match_win_width) / 2)); 
 				box($match_win, 0, 0);
-				addstr($match_win, 1, 1, $Porcelain::Main::url_cert->fingerprint_sha256());
-				addstr($match_win, 3, 1, randomart(lc($Porcelain::Main::url_cert->fingerprint_sha256() =~ tr/://dr)));
+				addstr($match_win, 1, 1, $Porcelain::Main::host_cert->fingerprint_sha256());
+				addstr($match_win, 3, 1, randomart(lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)));
 				addstr($match_win, $match_win_height - 2, 1, "Compare with SHA-256 fingerprint obtained from a credible source. Does it match?");
 				refresh($match_win);
 				$r = getch;
 				unless (lc($r) eq 'y') {
 					return;
 				}
-				# TODO: store the $sha256 (from $Porcelain::Main::url_cert) in known_hosts
+				# TODO: store the $sha256 (from $Porcelain::Main::host_cert) in known_hosts
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
-				if ($r eq lc($Porcelain::Main::url_cert->fingerprint_sha256() =~ tr/://dr)) {
+				if ($r eq lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)) {
 					Porcelain::CursesUI::clean_exit "SHA-256 match";
 				} else {
 					Porcelain::CursesUI::clean_exit "SHA-256 mismatch";
@@ -171,25 +171,25 @@ sub page_nav {
 		} elsif ($c eq "]") {	# 'next' gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 			if (defined $Porcelain::Main::chosen_link && $Porcelain::Main::chosen_link < scalar(@Porcelain::Main::last_links)-1 && defined $Porcelain::Main::last_links[$Porcelain::Main::chosen_link+1]) {
 				$Porcelain::Main::chosen_link++;
-				$Porcelain::Main::url = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
+				$Porcelain::Main::rq_addr = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
 				return;
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "[") {	# 'previous'
 			if (defined $Porcelain::Main::chosen_link && $Porcelain::Main::chosen_link > 0 && defined $Porcelain::Main::last_links[$Porcelain::Main::chosen_link-1]) {
 				$Porcelain::Main::chosen_link--;
-				$Porcelain::Main::url = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
+				$Porcelain::Main::rq_addr = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
 				return;
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
 			if (scalar(@Porcelain::Main::back_history) > 0) {
-				push @Porcelain::Main::forward_history, $Porcelain::Main::url;
-				$Porcelain::Main::url = pop @Porcelain::Main::back_history;
+				push @Porcelain::Main::forward_history, $Porcelain::Main::rq_addr;
+				$Porcelain::Main::rq_addr = pop @Porcelain::Main::back_history;
 				return;
 			}
 		} elsif ($c eq "\cL") {	# forward in history
 			if (scalar(@Porcelain::Main::forward_history) > 0) {
-				push @Porcelain::Main::back_history, $Porcelain::Main::url;
-				$Porcelain::Main::url = pop @Porcelain::Main::forward_history;
+				push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;
+				$Porcelain::Main::rq_addr = pop @Porcelain::Main::forward_history;
 				return;
 			}
 		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
@@ -231,10 +231,10 @@ sub page_nav {
 			}
 			$update_viewport = 1;
 		} elsif ($c eq 'o') {
-			push @Porcelain::Main::back_history, $Porcelain::Main::url;	# save last url to back_history
-			$Porcelain::Main::url = Porcelain::CursesUI::c_prompt_str("url: ");	# not allowing relative links
-			if (not $Porcelain::Main::url =~ m{:}) {
-				$Porcelain::Main::url = "gemini://" . $Porcelain::Main::url;
+			push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;	# save last address to back_history
+			$Porcelain::Main::rq_addr = Porcelain::CursesUI::c_prompt_str("open: ");	# not allowing relative links
+			if (not $Porcelain::Main::rq_addr =~ m{:}) {
+				$Porcelain::Main::rq_addr = "gemini://" . $Porcelain::Main::rq_addr;
 			}
 			return;
 		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
@@ -279,13 +279,13 @@ sub page_nav {
 				return;
 			}
 			$Porcelain::Main::chosen_link = $c-1;
-			@Porcelain::Main::last_links = @Porcelain::Main::links;	# TODO: last links needs to store absolute links, or use last url from history
+			@Porcelain::Main::last_links = @Porcelain::Main::links;	# TODO: last links needs to store absolute links, or use last rq_addr from history
 			Porcelain::CursesUI::c_statusline "open link: $c - " . $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
-			push @Porcelain::Main::back_history, $Porcelain::Main::url;	# save last url to back_history
+			push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;	# save last rq_addr to back_history
 			foreach (@Porcelain::Main::last_links) {
-				$_ = url2absolute($Porcelain::Main::url, $_);
+				$_ = Porcelain::Main::url2absolute($Porcelain::Main::rq_addr, $_);
 			}
-			$Porcelain::Main::url = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
+			$Porcelain::Main::rq_addr = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
 			return;
 		}
 	}

@@ -97,7 +97,7 @@ use DateTime;
 use Encode qw(encode decode);
 use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
 use List::Util qw(min max);
-require Net::SSLeay;
+use Net::SSLeay;
 use Pod::Usage;
 use Porcelain::Crypto;
 use Porcelain::CursesUI;
@@ -110,8 +110,8 @@ use open ':encoding(UTF-8)';
 use subs qw(open_about);
 
 ### Variables ###
-our $url;
-our $url_cert;
+my $rq_addr;		# address of the request (URI, IRI, local, internal)
+our $host_cert;
 our @back_history;
 our @forward_history;
 my %open_with;
@@ -204,7 +204,7 @@ sub open_about {	# resource, e.g. 'about:history'
 	my @about_cont;				# content for the about page
 	if ($about_page eq "history") {
 		@about_cont = @back_history;
-		unshift @about_cont, ("History", $url . " $url <-- CURRENT URL");
+		unshift @about_cont, ("History", $rq_addr . " $rq_addr <-- CURRENT URL");
 	} elsif ($about_page eq "bookmarks") {
 	} elsif ($about_page eq "subscriptions") {
 	} else {
@@ -238,18 +238,18 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 	my $domain = gem_host($resource);
 	# TODO: warn/error if $certpath but not $keypath
 
-	undef $url_cert;
-	(my $raw_response, my $err, $url_cert)= sslcat_porcelain($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
+	undef $host_cert;
+	(my $raw_response, my $err, $host_cert)= sslcat_porcelain($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
 	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
 	}
-	if (not defined $url_cert) {
+	if (not defined $host_cert) {
 		die "no certificate received from server";
 	}
-	# Transform $url_cert into usable format for Crypt::OpenSSL::X509
-	$url_cert = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($url_cert));
-	if ($r = validate_cert($url_cert, $domain)) {
+	# Transform $host_cert into usable format for Crypt::OpenSSL::X509
+	$host_cert = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($host_cert));
+	if ($r = validate_cert($host_cert, $domain)) {
 		my $last_r = $r;
 		undef $r;
 		do {
@@ -267,7 +267,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 	chomp $meta;
 
 	my $status = substr $full_status, 0, 1;
-	$url =~ s/[^[:print:]]//g;
+	$rq_addr =~ s/[^[:print:]]//g;
 	$meta =~ s/[^[:print:]]//g;
 	if ($status != 3) {
 		$redirect_count = 0;	# reset the $redirect_count
@@ -276,7 +276,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 		# TODO: 11: SENSITIVE INPUT (e.g. password entry) - don't echo
 		$r = c_prompt_str $meta . ": ";	# TODO: other separator? check if $meta includes ':' at the end?
 		$r = uri_escape $r;
-		$url = $url . "?" . $r;		# query component is separated from the path by '?'.
+		$rq_addr = $rq_addr . "?" . $r;		# query component is separated from the path by '?'.
 		return;
 	} elsif ($status == 2) {	# 2x: SUCCESS
 		# <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
@@ -286,7 +286,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 		# TODO: support text/plain
 		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
 			# check if extension in %open_with
-			my $f_ext = $url =~ s/.*\././r;
+			my $f_ext = $rq_addr =~ s/.*\././r;
 			if (defined $open_with{$f_ext}) {	# TODO: check MIME type primarily; suffix as fallback
 				open(my $fh, '|-', "$open_with{$f_ext}") or c_warn "Error opening pipe to ogg123: $!";
 				print $fh join("\n", @response) or clean_exit "error writing to pipe";
@@ -294,29 +294,29 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 			} else {
 				$r = '';
 				until ($r =~ /^[YyNn]$/) {
-					$r = c_prompt_ch "Unknown MIME type in resource $url. Download? [y/n]";
+					$r = c_prompt_ch "Unknown MIME type in resource $rq_addr. Download? [y/n]";
 				}
 				if ($r =~ /^[Yy]$/) {
-					downloader($url, join("\n", @response)) && c_warn "Download of $url failed!";
+					downloader($rq_addr, join("\n", @response)) && c_warn "Download of $rq_addr failed!";
 				}
 			}
 			if (scalar(@back_history) > 0) {
-				$url = pop @back_history;
+				$rq_addr = pop @back_history;
 			} else {
-				clean_exit "unable to open $url";
+				clean_exit "unable to open $rq_addr";
 			}
 		}
 		return page_nav \@response
 	} elsif ($status == 3) {	# 3x: REDIRECT
 		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
-		chomp $url;
+		chomp $rq_addr;
 		$redirect_count++;
 		if ($redirect_count > $redirect_max) {
 			die "ERROR: more than maximum number of $redirect_max redirects";
 		}
 		# TODO: allow option to ask for confirmation before all redirects
-		$url = url2absolute($url, $meta);
-		if (not $url =~ m{^gemini://}) {
+		$rq_addr = url2absolute($rq_addr, $meta);
+		if (not $rq_addr =~ m{^gemini://}) {
 			die "ERROR: cross-protocol redirects not allowed";	# TODO: instead ask for confirmation?
 		}
 		return;
@@ -328,12 +328,12 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 			$r = c_err "4x: Temporary Failure: $meta. [B]ack, [R]etry, [O]ther URL or [Q]uit?"; # TODO: [B]ack not working
 		} until ($r =~ /^[BbRrOoQq]$/);
 		if ($r =~ /^[Oo]$/) {
-			$url = c_prompt_str("url: gemini://");	# TODO: allow relative links??
-			$url = 'gemini://' . $url;
+			$rq_addr = c_prompt_str("url: gemini://");	# TODO: allow relative links??
+			$rq_addr = 'gemini://' . $rq_addr;
 			return;
 		} elsif ($r =~ /^[Bb]$/) {
 			if (scalar(@back_history) > 0) {
-				$url = pop @back_history;
+				$rq_addr = pop @back_history;
 				return;
 			}
 		} elsif ($r =~ /^[Qq]$/) {
@@ -347,15 +347,15 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 			$r = c_err "5x: Permanent Failure: $meta. [B]ack, [R]etry, [O]ther URL or [Q]uit?"; # TODO: [B]ack not working
 		} until ($r =~ /^[BbRrOoQq]$/);
 		if ($r =~ /^[Oo]$/) {
-			$url = c_prompt_str("url: gemini://");	# TODO: allow relative links??
-			$url = 'gemini://' . $url;
+			$rq_addr = c_prompt_str("url: gemini://");	# TODO: allow relative links??
+			$rq_addr = 'gemini://' . $rq_addr;
 			return;
 		} elsif ($r =~ /^[Bb]$/) {
 			if (scalar(@back_history) > 0) {
-				$url = pop @back_history;
+				$rq_addr = pop @back_history;
 				return;
 			} else {
-				clean_exit "error invalid url: $url";
+				clean_exit "error invalid url: $rq_addr";
 			}
 		} elsif ($r =~ /^[Qq]$/) {
 			clean_exit;
@@ -371,7 +371,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 		my $sha;
 		# TODO: link an identity to a resource (and all paths underneath it)
 		if (scalar(@ident_files) == 0) {
-			$r = c_prompt_ch "Identity has been requested, but none found. Create new certificate for $url? [Y/n]";
+			$r = c_prompt_ch "Identity has been requested, but none found. Create new certificate for $rq_addr? [Y/n]";
 			if ($r =~ /^[Yy]$/) {
 				$sha = gen_identity 30;	# TODO: ask for certificate lifetime
 			} else {
@@ -382,7 +382,7 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 		}
 		my $crt_key = $idents_dir . "/" . $sha;
 		if (-e $crt_key . ".crt" && -e $crt_key . ".key") {
-			open_gemini($url, $crt_key . ".crt", $crt_key . ".key");
+			open_gemini($rq_addr, $crt_key . ".crt", $crt_key . ".key");
 		} else {
 			c_err "Identity $r not found!";
 		}
@@ -394,10 +394,10 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 sub open_custom {
 	if (defined $open_with{$_[0]}) {
 		system("$open_with{$_[0]} $_[1]");
-		$url = pop @back_history;
+		$rq_addr = pop @back_history;
 	} else {
 		if ($_[0] eq 'file') {
-			open_file $url;
+			open_file $rq_addr;
 		} else {
 			clean_exit "Not implemented.";
 		}
@@ -407,7 +407,7 @@ sub open_custom {
 sub open_url {
 	# TODO: read from %open_with, open with 'gemini' protocol or other modality
 	# TODO: then determine the resource MIME type and call appropriate resource sub
-	c_statusline "Loading $url ...";
+	c_statusline "Loading $rq_addr ...";
 	if (uri_class($_[0]) eq 'gemini') {
 		open_gemini $_[0];
 	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
@@ -526,18 +526,18 @@ if ($opt_pledge) {
 
 ### Determine Starting Address ###
 if (scalar @ARGV == 0) {	# no URI passed
-	$url = "gemini://gemini.circumlunar.space/";
+	$rq_addr = "gemini://gemini.circumlunar.space/";
 } else {
 	if (not $ARGV[0] =~ m{://}) {
-		$url = 'gemini://' . $ARGV[0];
+		$rq_addr = 'gemini://' . $ARGV[0];
 	} else {
-		$url = "$ARGV[0]";
+		$rq_addr = "$ARGV[0]";
 	}
 }
 
 ### Request loop ###
 while (1) {
-	open_url $url;
+	open_url $rq_addr;
 }
 
 __END__
