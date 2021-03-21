@@ -78,6 +78,7 @@
 # - use sub lines more consistently
 # - check POD documentation with podchecker(1)
 # - go through '$ perldoc perlpodstyle'
+# - enable --conf/-c config file support; see GetOptions
 
 use strict;
 use warnings;
@@ -430,7 +431,7 @@ sub open_url {
 my $configfile = $porcelain_dir . "/porcelain.conf";
 my $opt_dump =		'';	# dump page to STDOUT
 my $opt_pledge =	'';	# use pledge
-my $stdio;			# contains STDIN via '-'
+my $file_in;			# local file; STDIN via '-'
 my $opt_unveil =	'';	# use unveil
 
 if ($^O eq 'openbsd') {	# pledge and unveil by default
@@ -444,12 +445,10 @@ GetOptions (
 		"help|h"	=> sub { Getopt::Long::HelpMessage() },
 		"man|m"		=> sub { pod2usage(-exitval => 0, -verbose => 2) },
 		"pledge!"	=> \$opt_pledge,	# --nopledge disables
-		''		=> \$stdio,
+		'file|f=s"'	=> \$file_in,
 		"unveil!"	=> \$opt_unveil,	# --nounveil disables
 		"version|v"	=> sub { Getopt::Long::VersionMessage() },
 );
-# Note: auto_version provides '--version' via $main::VERSION
-#	auto_help provides '--help' via Pod::Usage;
 
 ### Set up and read config ###
 if (! -d $porcelain_dir) {
@@ -559,7 +558,7 @@ Options:
   -h/--help	brief help message
   -m/--man	full documentation
   -v/--version	version information
-  -d/--dump	dump rendered page to STDOUT
+  -d/--dump	dump rendered page to standard output
   --nopledge	disable pledge system call restrictions
   --nounveil	disable unveil file hierarchy restrictions
   -f/--file	open file (use '-' for standard input)
