@@ -76,6 +76,8 @@
 # - remove need for rpath from sslcat_porcelain by preloading whatever is needed?
 # - implement fork+exec
 # - use sub lines more consistently
+# - check POD documentation with podchecker(1)
+# - go through '$ perldoc perlpodstyle'
 
 use strict;
 use warnings;
@@ -466,11 +468,9 @@ if (-e $hosts_file) {
 	@known_hosts = split('\n', $raw_hosts);
 }
 
-# Init: ssl, pledge, unveil
-# TODO: separate out into init sub or multiple subs
+### Init: SSLeay, Curses ###
 Net::SSLeay::initialize();	# initialize ssl library once
 
-# Curses init
 if (not $opt_dump) {
 	initscr;
 	start_color;	# TODO: check if (has_colors)
@@ -491,6 +491,7 @@ if (not $opt_dump) {
 	init_pair(7, COLOR_RED, COLOR_WHITE);
 }
 
+### Secure: unveil, pledge ###
 if ($opt_unveil) {
 	use OpenBSD::Unveil;
 	# TODO: tighten unveil later
@@ -523,6 +524,7 @@ if ($opt_pledge) {
 	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec ) ) || die "Unable to pledge: $!";
 }
 
+### Determine Starting Address ###
 if (scalar @ARGV == 0) {	# no URI passed
 	$url = "gemini://gemini.circumlunar.space/";
 } else {
@@ -533,22 +535,21 @@ if (scalar @ARGV == 0) {	# no URI passed
 	}
 }
 
-# Main loop
-while ($url) {
+### Request loop ###
+while (1) {
 	open_url $url;
 }
-
-clean_exit;
 
 __END__
 
 =head1 NAME
 
-Porcelain - a gemini browser
+B<Porcelain> - a gemini browser
 
 =head1 SYNOPSIS
 
 porcelain [-hmv]
+
 porcelain [-d] [--nopledge] [--nounveil] [url|-]
 
 Options:
@@ -581,7 +582,7 @@ specified in ~/.porcelain/open.conf.
 If the MIME type is not known or cannot be determined, Porcelain will
 try to find the extension (like '.gmi') in ~/.porcelain/open.conf.
 
-=head1 KEYS
+=head2 KEYS
 
 =over
 
@@ -671,8 +672,24 @@ Command entry.
 
 =back
 
+=head1 EXIT STATUS
+
+=head1 CONFIGURATION
+
+=head1 DEPENDENCIES
+
 =head1 FILES
 
+~/.porcelain/known_hosts
+
 ~/.porcelain/open.conf
+
+=head1 BUGS AND LIMITATIONS
+
+=head1 AUTHOR
+
+=head1 LICENSE AND COPYRIGHT
+
+=head1 DISCLAIMER OF WARRANTY
 
 =cut
