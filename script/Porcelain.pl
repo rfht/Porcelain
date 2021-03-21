@@ -99,12 +99,13 @@ use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	
 use List::Util qw(min max);
 use Net::SSLeay;
 use Pod::Usage;
-use Porcelain::Crypto;
-use Porcelain::CursesUI;
-use Porcelain::Format;
-use Porcelain::Nav;
-use Porcelain::Porcelain;
-use Porcelain::RandomArt;
+use Porcelain::Crypto;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::CursesUI;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::Format;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::Nav;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::Porcelain;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::RandomArt;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::RequestHandler;
 
 use open ':encoding(UTF-8)';
 use subs qw(open_about);
@@ -536,9 +537,11 @@ if (scalar @ARGV == 0) {	# no URI passed
 }
 
 ### Request loop ###
-while (1) {
-	open_url $rq_addr;
+while (defined $rq_addr) {
+	$rq_addr = request $rq_addr;
 }
+
+clean_exit "Bye...";
 
 __END__
 
@@ -550,7 +553,7 @@ B<Porcelain> - a gemini browser
 
 porcelain [-hmv]
 
-porcelain [-d] [--nopledge] [--nounveil] [url|-]
+porcelain [-d] [--nopledge] [--nounveil] [url|-f file]
 
 Options:
   -h/--help	brief help message
@@ -559,6 +562,7 @@ Options:
   -d/--dump	dump rendered page to STDOUT
   --nopledge	disable pledge system call restrictions
   --nounveil	disable unveil file hierarchy restrictions
+  -f/--file	open file (use '-' for standard input)
 
 =head1 DESCRIPTION
 
