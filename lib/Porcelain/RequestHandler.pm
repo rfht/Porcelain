@@ -89,7 +89,7 @@ sub request {	# first line to process all requests for an address. params: addre
 	} else {
 		die "unable to process connection type: $conn";	# should not be reachable
 	}
-	clean_exit "content length: " . scalar(@content) . "\n" . $content[0];
+	clean_exit "conn: $conn, content length: " . scalar(@content) . "\n" . $content[0];
 
 	### Render Content ###
 

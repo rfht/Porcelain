@@ -138,8 +138,20 @@ my $redirect_max = 5;	# TODO: allow setting this in the config
 
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
 our $idents_dir = $porcelain_dir . "/idents";
-our $hosts_file = $porcelain_dir . "/known_hosts";
+
+my @bookmarks;
+my @config;
+my @history;
 our @known_hosts;
+my @subscriptions;
+my %text_stores = (
+	"bookmarks"		=> \@bookmarks,
+	"config"		=> \@config,
+	"history"		=> \@history,
+	"known_hosts"		=> \@known_hosts,
+	"subscriptions"		=> \@subscriptions,
+);
+our $hosts_file = $porcelain_dir . "/known_hosts";	# obsolete; still used in Crypto.pm.
 
 # known_hosts entries
 my $kh_domain;		# domain in known_hosts
@@ -454,22 +466,21 @@ GetOptions (
 		"version|v"	=> sub { Getopt::Long::VersionMessage() },
 );
 
-### Set up and read config ###
+### Set up and read config, known_hosts, bookmarks, history ###
 if (! -d $porcelain_dir) {
 	mkdir $porcelain_dir || die "Unable to create $porcelain_dir";
 }
 if (! -d $idents_dir) {
 	mkdir $idents_dir || die "Unable to create $idents_dir";
 }
-if (-e $hosts_file) {
-	my $raw_hosts;
-	open(my $fh, '<', $hosts_file) or die "cannot open $hosts_file";
-	{
-		local $/;
-		$raw_hosts = <$fh>;
+
+foreach (keys %text_stores) {
+	my $store_key = $_;
+	my $store_file = $porcelain_dir . "/" . $store_key;
+	print $store_file . "\n";
+	if (-f $store_file) {
+		@{$text_stores{$store_key}} = readtext $store_file;
 	}
-	close($fh);
-	@known_hosts = split('\n', $raw_hosts);
 }
 
 ### Determine Starting Address ###
