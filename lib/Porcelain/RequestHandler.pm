@@ -62,6 +62,9 @@ sub conn_parse {	# parse connection. args: address --> return: connection type, 
 
 sub init_request {
 	@pod = @{$_[0]};
+	@bookmarks = @{$_[1]};
+	@history = @{$_[2]};
+	@subscriptions = @{$_[3]};
 }
 
 sub request {	# first line to process all requests for an address. params: address --> return: new address

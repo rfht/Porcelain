@@ -477,7 +477,6 @@ if (! -d $idents_dir) {
 foreach (keys %text_stores) {
 	my $store_key = $_;
 	my $store_file = $porcelain_dir . "/" . $store_key;
-	print $store_file . "\n";
 	if (-f $store_file) {
 		@{$text_stores{$store_key}} = readtext $store_file;
 	}
@@ -575,7 +574,7 @@ if ($opt_pledge) {
 
 ### Request loop ###
 
-init_request \@pod;
+init_request \@pod, \@bookmarks, \@history, \@subscriptions;
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;
 }
