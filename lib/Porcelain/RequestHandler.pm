@@ -7,6 +7,7 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(init_request request);
 
+use File::LibMagic;
 use Porcelain::CursesUI;	# for displaying status updates and prompts
 
 my @supported_protocols = ("gemini", "file", "about");
@@ -79,8 +80,12 @@ sub request {	# first line to process all requests for an address. params: addre
 		# set content
 		@content = @{$habout{$addr}};
 	} elsif ($conn eq "file") {	# local file
-		# open file
 		# check MIME type
+		my $magic = File::LibMagic->new;
+		my $info = $magic->info_from_filename($addr);
+		my $mime = $info->{mime_type};
+		clean_exit $mime;
+		# open file
 	} elsif ($conn eq "gemini") {
 		# TLS connection (check if TLS 1.3 needs to be enforced)
 		# TOFU

@@ -546,6 +546,8 @@ if ($opt_unveil) {
 	unveil("/usr/libdata/perl5", "r") || die "Unable to unveil: $!";	# TODO: tighten this one more
 	unveil("/etc/resolv.conf", "r") || die "Unable to unveil: $!";		# needed by sslcat_porcelain(r)
 	unveil("/etc/termcap", "r") || die "Unable to unveil: $!";
+	unveil("/usr/local/lib/libmagic.so.5.0", "r") || die "Unable to unveil: $!";	# TODO: find the version number and make this resilient to version updates
+	unveil("/usr/local/share/misc/magic.mgc", "r") || die "Unable to unveil: $!";
 	unveil("$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
 	if (-f $porcelain_dir . '/open.conf') {
 		%open_with = readconf($porcelain_dir . '/open.conf');
@@ -575,6 +577,7 @@ if ($opt_pledge) {
 ### Request loop ###
 
 init_request \@pod, \@bookmarks, \@history, \@subscriptions;
+# TODO: empty/undef all these arrays after init_request?
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;
 }
