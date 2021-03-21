@@ -66,15 +66,14 @@ sub init_request {
 
 sub request {	# first line to process all requests for an address. params: address --> return: new address
 		# the new address that is returned will be fed into request again; return undef to exit
-	(my $rq_addr, my $raw_stdin) = @_;
-	@stdin = @$raw_stdin;			# TODO: is this step really needed?
+	my $rq_addr = $_[0];
+	@stdin = @{$_[1]};
 	my @content;
 
 	### Determine connection type and obtain content ###
 	my ($conn, $addr) = conn_parse $rq_addr;
 	if ($conn eq "about") {	# about:..., stdin
 		# set content
-		#clean_exit scalar(@{$habout{$addr}});
 		@content = @{$habout{$addr}};
 	} elsif ($conn eq "file") {	# local file
 		# open file
