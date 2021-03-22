@@ -148,9 +148,14 @@ sub request {	# first line to process all requests for an address. params: addre
 
 		# TOFU
 		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
+		# TODO: 3 scenarios:
+		#	(2, Date): Server verified (last on date)
+		#	(1, Date): TOFU ok (stored on date)
+		#	(0, Error string): Error, details in string. (fingerprint mismatch, expired, unsupported fingerprint algorithm...
 		if (my $r = validate_cert($host_cert, $domain)) {
+			my $r1;
 			do {
-				my $r1 = c_err "Cert validation error: $r. [C]ontinue or [A]bort?";
+				$r1 = c_err "Cert validation error: $r. [C]ontinue or [A]bort?";
 			} until ($r1 =~ /^[CcAa]$/);
 			clean_exit if (lc($r1) eq "a");
 		}
