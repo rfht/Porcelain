@@ -21,12 +21,17 @@ my @pod;
 my @stdin;
 my @subscriptions;
 
+my @error	= ("Error completing the request");	# TODO: flesh out; format; list error details
+my @new		= ("New page");				# TODO: flesh out, e.g. Porcelain in ASCII art
+
 my %habout = (			# hash of all about addresses
 	"bookmarks"	=> \@bookmarks,
 	"config"	=> \@config,
+	"error"		=> \@error,
 	"help"		=> \@help,
 	"history"	=> \@history,
 	"man"		=> \@pod,
+	"new"		=> \@new,
 	"pod"		=> \@pod,
 	"stdin"		=> \@stdin,
 	"subscriptions"	=> \@subscriptions,
@@ -68,11 +73,28 @@ sub init_request {
 	@subscriptions = @{$_[3]};
 }
 
+sub parse_mime_ext {	# determine how to parse/format based on MIME type and optionally filename extension
+			# params: MIME type, filename (optional) --> return: string "gemini", "plain", or "unsupported"
+	my ($mime, $filenam) = @_;
+	if ($mime eq "text/gemini" || $filenam =~ /\.gemini$/ || $filenam =~ /\.gmi$/) {
+		return "gemini";
+	} elsif ($mime eq "text/plain") {
+		return "plain";
+	} else {
+		return "unsupported";
+	}
+}
+
+sub fileext {	# simple sub to return the file extension. params: filename --> return: extension (e.g. '.ogg')
+	return "." . $_[0] =~ s/.*\.//r;
+}
+
 sub request {	# first line to process all requests for an address. params: address --> return: new address
 		# the new address that is returned will be fed into request again; return undef to exit
 	my $rq_addr = $_[0];
 	@stdin = @{$_[1]};
 	my @content;
+	my $render_format = undef;	# can be "gemini" or "plain"
 
 	### Determine connection type and obtain content ###
 	my ($conn, $addr) = conn_parse $rq_addr;
@@ -81,11 +103,28 @@ sub request {	# first line to process all requests for an address. params: addre
 		@content = @{$habout{$addr}};
 	} elsif ($conn eq "file") {	# local file
 		# check MIME type
+		if (not -f $addr) {
+			return "about:error";
+		}
 		my $magic = File::LibMagic->new;
-		my $info = $magic->info_from_filename($addr);
-		my $mime = $info->{mime_type};
-		clean_exit $mime;
-		# open file
+		my $mime = $magic->info_from_filename($addr)->{mime_type};
+		$render_format = parse_mime_ext $mime, $addr;
+		# get content from file
+		# TODO: allow custom openers for text/gemini or text/plain?
+		if ($render_format ne "unsupported") {
+			@content = Porcelain::Porcelain::readtext $addr;
+		} else {
+			if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
+				system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
+				return "about:new";
+			} elsif (defined $Porcelain::Main::open_with{fileext($addr)}) {
+				system("$Porcelain::Main::open_with{fileext($addr)} $addr");
+				return "about:new";
+			} else {
+				# failed to open; set error page
+				return "about:error";
+			}
+		}
 	} elsif ($conn eq "gemini") {
 		# TLS connection (check if TLS 1.3 needs to be enforced)
 		# TOFU
@@ -94,10 +133,17 @@ sub request {	# first line to process all requests for an address. params: addre
 		# if SUCCESS (2x), check MIME type, set content if compatible
 	} elsif ($conn eq "unsupported") {
 		# check if handler registered; if so, invoke handler
+		my $protocol = (split ":", $addr)[0];
+		if (defined $Porcelain::Main::open_with{$protocol}) {
+			system("$Porcelain::Main::open_with{$protocol} $addr");
+			return "about:new";
+		} else {
+			return "about:error";
+		}
 	} else {
 		die "unable to process connection type: $conn";	# should not be reachable
 	}
-	clean_exit "conn: $conn, content length: " . scalar(@content) . "\n" . $content[0];
+	clean_exit "conn: $conn, addr: $addr, content length: " . scalar(@content) . "\n" . $content[0];
 
 	### Render Content ###
 

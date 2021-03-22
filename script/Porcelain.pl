@@ -120,7 +120,7 @@ my ($vol, $dir, $fil);	# for local file location
 our $host_cert;
 our @back_history;
 our @forward_history;
-my %open_with;
+our %open_with;
 our @links;		# array containing links in the pages
 our @last_links;		# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 our $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
