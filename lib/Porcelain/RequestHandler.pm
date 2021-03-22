@@ -8,9 +8,11 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw(init_request request);
 
 use File::LibMagic;
+use Porcelain::Crypto;
 use Porcelain::CursesUI;	# for displaying status updates and prompts
 
 my @supported_protocols = ("gemini", "file", "about");
+my $host_cert;
 
 # about pages
 my @bookmarks;
@@ -89,6 +91,13 @@ sub fileext {	# simple sub to return the file extension. params: filename --> re
 	return "." . $_[0] =~ s/.*\.//r;
 }
 
+sub addr2dom {	# get the domain of an address. address needs to be _without_ leading 'gemini://'!
+		# params: address --> return: (domain, port)
+	my $domport =  $_[0] =~ s|/.*||r;
+	my ($domain, $port) = split ":", $domport;
+	return ($domain, $port);
+}
+
 sub request {	# first line to process all requests for an address. params: address --> return: new address
 		# the new address that is returned will be fed into request again; return undef to exit
 	my $rq_addr = $_[0];
@@ -126,9 +135,26 @@ sub request {	# first line to process all requests for an address. params: addre
 			}
 		}
 	} elsif ($conn eq "gemini") {
-		# TLS connection (check if TLS 1.3 needs to be enforced)
+
+		# TLS connection (TODO: check if TLS 1.3 needs to be enforced)
+		# TODO: check if client cert is associated; if so, set $client_cert and $client_key
+		my ($domain, $port) = addr2dom $addr;
+		$port = 1965 unless $port;
+		my ($client_cert, $client_key);
+		undef $host_cert;
+		# TODO: check that sslcat_porcelain works with port in $addr
+		(my $response, my $err, $host_cert) = sslcat_porcelain($domain, $port, "$addr\r\n", $client_cert, $client_key);
+		die "Error while trying to establish TLS connection: $!" if $err;	# TODO: die => clean_die;
+
 		# TOFU
-		# opt. client cert
+		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
+		if (my $r = validate_cert($host_cert, $domain)) {
+			do {
+				my $r1 = c_err "Cert validation error: $r. [C]ontinue or [A]bort?";
+			} until ($r1 =~ /^[CcAa]$/);
+			clean_exit if (lc($r1) eq "a");
+		}
+		clean_exit Net::SSLeay::X509_get_fingerprint($host_cert, "sha256");
 		# Process response header
 		# if SUCCESS (2x), check MIME type, set content if compatible
 	} elsif ($conn eq "unsupported") {

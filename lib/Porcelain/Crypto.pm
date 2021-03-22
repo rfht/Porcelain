@@ -9,7 +9,7 @@ our @EXPORT = qw(gen_client_cert gen_identity gen_privkey store_cert store_privk
 
 use subs qw(c_warn);
 
-my $default_fp_algo = "SHA-256";
+my $default_fp_algo = "sha256";
 my $default_rsa_bits = 2048;
 my $rsa_exponent = 65537;
 my $r;		# hold short-term return values
@@ -56,7 +56,7 @@ sub store_cert {	# x509 cert, filename -->
 	close $fh;
 }
 
-sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in days --> SHA-256 of the new cert
+sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in days --> sha256 of the new cert
 	my $days = $_[0];
 	my $pkey = gen_privkey;
 	my $x509 = gen_client_cert($days, $pkey);
@@ -72,7 +72,8 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
 	# TODO: add optional notBefore/notAfter checks
 	# TODO: allow temporarily accepting new/changed certificates?
-	my $domainname = $_[1];
+	# TODO: switch to using straight Net::SSLeay. use: X509_get_pubkey($x509); X509_get_fingerprint($x509, "sha256");
+	my ($x509, $domainname) = @_;
 	foreach (@Porcelain::Main::known_hosts) {
 		my $this_host = $_;
 		if (substr($this_host, 0, length($domainname)) eq $domainname) {
@@ -82,9 +83,8 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 	}
 	if ($Porcelain::Main::kh_serv_hash) {
 		# cert is known, does cert still match (TOFU)?
-		#my ($fp_algo, $fp) = (split(" ", $match[0]))[1,2];	# $fp_algo: fingerprint algorithm (SHA-256), $fp: fingerprint
-		if ($Porcelain::Main::kh_algo eq "SHA-256") {
-			if (lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
+		if ($Porcelain::Main::kh_algo eq "sha256") {
+			if (lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
 				return undef;
 			} else {
 				return "fingerprint mismatch";
@@ -93,17 +93,14 @@ sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR
 		return "unsupported fingerprint algorithm: $Porcelain::Main::kh_algo";
 	}
 	# TODO: allow config setting to automatically accept unknown hosts without prompt
-	$r = '';
-	until ($r =~ /^[SsAa]$/) {
+	do {
 		$r = c_warn "Unknown host: $domainname. [S]ave to known_hosts and continue, or [A]bort?";
-	}
-	if ($r =~ /^[Aa]$/) {
-		return "Unknown host: $domainname, user aborted";
-	}
+	} until ($r =~ /^[SsAa]$/);
+	return "Unknown host: $domainname, user aborted" if (lc($r) eq 'a');
 	# New Host. add to @known_hosts and write to $hosts_file
-	($Porcelain::Main::kh_domain, $Porcelain::Main::kh_algo, $Porcelain::Main::kh_serv_hash) = ($domainname, $default_fp_algo, lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr));
+	($Porcelain::Main::kh_domain, $Porcelain::Main::kh_algo, $Porcelain::Main::kh_serv_hash) = ($domainname, $default_fp_algo, lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr));
 	open (my $fh, '>>', $Porcelain::Main::hosts_file) or die "Could not open file $Porcelain::Main::hosts_file";
-	if ($default_fp_algo eq "SHA-256") {
+	if ($default_fp_algo eq "sha256") {
 		my $kh_line = $Porcelain::Main::kh_domain . ' ' . $Porcelain::Main::kh_algo . ' ' . $Porcelain::Main::kh_serv_hash;
 		push @Porcelain::Main::known_hosts, $kh_line;
 		$fh->print($kh_line . "\n");

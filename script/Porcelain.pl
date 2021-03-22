@@ -258,7 +258,6 @@ sub open_gemini {	# url, certpath (optional), keypath (optional)
 
 	undef $host_cert;
 	(my $raw_response, my $err, $host_cert)= sslcat_porcelain($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
-	# TODO: alert and prompt user if error obtaining cert or validating it.
 	if ($err) {
 		die "error while trying to establish TLS connection";
 	}
