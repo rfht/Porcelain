@@ -141,8 +141,7 @@ sub request {	# first line to process all requests for an address. params: addre
 		my ($domain, $port) = addr2dom $addr;
 		$port = 1965 unless $port;
 		my ($client_cert, $client_key);
-		undef $host_cert;
-		# TODO: check that sslcat_porcelain works with port in $addr
+		undef $host_cert;		# TODO: really needed? Can this line be removed somehow?
 		(my $response, my $err, $host_cert) = sslcat_porcelain($domain, $port, "$addr\r\n", $client_cert, $client_key);
 		die "Error while trying to establish TLS connection: $!" if $err;	# TODO: die => clean_die;
 
@@ -152,14 +151,8 @@ sub request {	# first line to process all requests for an address. params: addre
 		#	(2, Date): Server verified (last on date)
 		#	(1, Date): TOFU ok (stored on date)
 		#	(0, Error string): Error, details in string. (fingerprint mismatch, expired, unsupported fingerprint algorithm...
-		if (my $r = validate_cert($host_cert, $domain)) {
-			my $r1;
-			do {
-				$r1 = c_err "Cert validation error: $r. [C]ontinue or [A]bort?";
-			} until ($r1 =~ /^[CcAa]$/);
-			clean_exit if (lc($r1) eq "a");
-		}
-		clean_exit Net::SSLeay::X509_get_fingerprint($host_cert, "sha256");
+		my @r = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
+		clean_exit join(" ", @r);
 		# Process response header
 		# if SUCCESS (2x), check MIME type, set content if compatible
 	} elsif ($conn eq "unsupported") {

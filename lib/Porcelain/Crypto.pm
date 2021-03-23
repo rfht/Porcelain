@@ -68,25 +68,36 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 	return $sha;
 }
 
-sub replace_validate_cert {	# params: certificate, domainname, known_hosts array
-				# return: ( returncode 0-3, details)
-				#	0: failed to validate cert (mismatch)
-				#	1: unknown cert (needs handling)
-				#	2: known cert and matches (TOFU)
-				#	3: known cert and verified
+sub validate_cert {	# params: certificate, domainname, known_hosts array
+			# return:
+			# (3, date last verified - shorter is better)
+			# (2, date first TOFU accepted - longer is better)
+			# (1, sha256 of host cert $x509 - for storing)
+			# (0, sha256 of host cert $x509 - can be used to update entry in known_hosts)
+			# (-1, error string - something else went wrong)
 	my ($x509, $domain, $known_hosts) = @_;
 	# get sha256 fingerprint - it will be needed in all scenarios
-	# is $domain in @$known_hosts?
-	# new $domain: defer to sub new_domain
-
-	# RETURN #
-	# (3, date last verified - shorter is better)
-	# (2, date first TOFU accepted - longer is better)
-	# (1, sha256 of host cert $x509 - for storing)
-	# (0, sha256 of host cert $x509 - can be used to update entry in known_hosts)
+	my $fp = lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr);
+	my @kh_match = grep(/^$domain\s+$default_fp_algo/, @$known_hosts);	# is $domain in @$known_hosts?
+	if (scalar(@kh_match) > 1) {
+		return (-1, "more than 1 match in known_hosts for $domain + $default_fp_algo");
+	} elsif (scalar(@kh_match) == 0) {
+		return (1, $fp);		# host not known
+	} elsif (scalar(@kh_match) == 1) {
+		my ($kh_domain, $kh_algo, $kh_fp, $kh_date, $kh_oob) = split /\s+/, $kh_match[0];
+		if ($fp eq $kh_fp) {		# TOFU match
+			return (2, $kh_date) unless $kh_oob;
+			return (3, $kh_date);
+		} else {
+			return (0, $fp);
+		}
+	} else {
+		return (-1, "unexpected error trying to find $domain + $default_fp_algo in known_hosts");
+	}
 }
 
-sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
+# TODO: remove sub old_validate_cert
+sub old_validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
 	# TODO: add optional notBefore/notAfter checks
 	# TODO: allow temporarily accepting new/changed certificates?
 	my ($x509, $domainname) = @_;

@@ -486,7 +486,7 @@ if (not defined $file_in) {		# most common case - no local file passed
 	if (scalar @ARGV == 0) {	# no address and no file passed => open default address
 		$rq_addr = "gemini://gemini.circumlunar.space/";	# TODO: about:new? Allow setting home page? Resume session?
 	} else {
-		if (not $ARGV[0] =~ m{:}) {
+		if (not $ARGV[0] =~ m{:}) {		# TODO: refine to allow specifying port without specifying domain: "thfr.info:1965/"
 			$rq_addr = 'gemini://' . $ARGV[0];
 		} else {
 			$rq_addr = "$ARGV[0]";
