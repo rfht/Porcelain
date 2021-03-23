@@ -147,11 +147,13 @@ sub request {	# first line to process all requests for an address. params: addre
 
 		# TOFU
 		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
-		# TODO: 3 scenarios:
-		#	(2, Date): Server verified (last on date)
-		#	(1, Date): TOFU ok (stored on date)
-		#	(0, Error string): Error, details in string. (fingerprint mismatch, expired, unsupported fingerprint algorithm...
 		my @r = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
+		# TODO: implement 5 scenarios:
+		#	(3, Date): Server verifier, date is LAST date of verification (more recent is better)
+		#	(2, Date): TOFU ok, date is the ORIGINAL date that TOFU was stored (more distant is better)
+		#	(1, fingerprint): unknown host, fingerprint for storing
+		#	(0, fingerprint): fingerprint mismatch, new fingerprint offered in case user wants to update it
+		#	(-1, string): unexpected error, see details in string
 		clean_exit join(" ", @r);
 		# Process response header
 		# if SUCCESS (2x), check MIME type, set content if compatible
