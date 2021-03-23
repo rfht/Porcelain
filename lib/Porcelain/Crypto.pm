@@ -60,8 +60,7 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 	my $days = $_[0];
 	my $pkey = gen_privkey;
 	my $x509 = gen_client_cert($days, $pkey);
-	my $sha = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($x509))->fingerprint_sha256();
-	$sha = lc($sha =~ tr/://dr);
+	my $sha = lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr);
 	my $key_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".key";
 	my $crt_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".crt";
 	store_privkey $pkey, $key_out_file;
@@ -69,10 +68,27 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 	return $sha;
 }
 
+sub replace_validate_cert {	# params: certificate, domainname, known_hosts array
+				# return: ( returncode 0-3, details)
+				#	0: failed to validate cert (mismatch)
+				#	1: unknown cert (needs handling)
+				#	2: known cert and matches (TOFU)
+				#	3: known cert and verified
+	my ($x509, $domain, $known_hosts) = @_;
+	# get sha256 fingerprint - it will be needed in all scenarios
+	# is $domain in @$known_hosts?
+	# new $domain: defer to sub new_domain
+
+	# RETURN #
+	# (3, date last verified - shorter is better)
+	# (2, date first TOFU accepted - longer is better)
+	# (1, sha256 of host cert $x509 - for storing)
+	# (0, sha256 of host cert $x509 - can be used to update entry in known_hosts)
+}
+
 sub validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
 	# TODO: add optional notBefore/notAfter checks
 	# TODO: allow temporarily accepting new/changed certificates?
-	# TODO: switch to using straight Net::SSLeay. use: X509_get_pubkey($x509); X509_get_fingerprint($x509, "sha256");
 	my ($x509, $domainname) = @_;
 	foreach (@Porcelain::Main::known_hosts) {
 		my $this_host = $_;
