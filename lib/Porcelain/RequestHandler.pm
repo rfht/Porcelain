@@ -147,14 +147,23 @@ sub request {	# first line to process all requests for an address. params: addre
 
 		# TOFU
 		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
-		my @r = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
-		# TODO: implement 5 scenarios:
-		#	(3, Date): Server verifier, date is LAST date of verification (more recent is better)
-		#	(2, Date): TOFU ok, date is the ORIGINAL date that TOFU was stored (more distant is better)
-		#	(1, fingerprint): unknown host, fingerprint for storing
-		#	(0, fingerprint): fingerprint mismatch, new fingerprint offered in case user wants to update it
-		#	(-1, string): unexpected error, see details in string
-		clean_exit join(" ", @r);
+		my ($r, $details) = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
+		if ($r == 3) {
+			# (3, Date): Server verified, date is LAST date of verification (more recent is better)
+		} elsif ($r == 2) {
+			# (2, Date): TOFU ok, date is the ORIGINAL date that TOFU was stored (more distant is better)
+		} elsif ($r == 1) {
+			# (1, fingerprint): unknown host, fingerprint for storing
+		} elsif ($r == 0) {
+			# (0, fingerprint): fingerprint mismatch, new fingerprint offered in case user wants to update it
+			c_err "fingerprint mismatch. [U]pdate fingerprint, [A]bort? ";
+		} elsif ($r == -1) {
+			# (-1, string): unexpected error, see details in string
+			return "about:error";	# TODO: add details to the error
+		} else {
+			die "invalid response from sub validate_cert: $r, $details";	# should not be reached
+		}
+
 		# Process response header
 		# if SUCCESS (2x), check MIME type, set content if compatible
 	} elsif ($conn eq "unsupported") {
