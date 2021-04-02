@@ -79,6 +79,8 @@
 # - check POD documentation with podchecker(1)
 # - go through '$ perldoc perlpodstyle'
 # - enable --conf/-c config file support; see GetOptions
+# - implement '.' to see raw page (like Elpher, apparently; see https://www.youtube.com/watch?v=Dy4IWoGbm6g)
+# - implement Tab key to select links in page
 
 use strict;
 use warnings;
@@ -146,6 +148,7 @@ our @known_hosts;
 my @subscriptions;
 my %text_stores = (
 	"bookmarks"		=> \@bookmarks,
+	"client_certs"		=> \@client_certs,
 	"config"		=> \@config,
 	"history"		=> \@history,
 	"known_hosts"		=> \@known_hosts,
@@ -164,52 +167,6 @@ our $kh_oob_date;	# date of last out-of-band update
 $SIG{INT} = \&caught_sigint;
 
 ### Subs ###
-sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
-	if ($_[0] =~ m{^[[:alpha:]]+://}) {
-		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;
-	} elsif ($_[0] =~ m{^about:}) {
-		return 'about';
-	} elsif ($_[0] =~ m{^mailto:}) {
-		return 'mailto';
-	} elsif ($_[0] =~ m{://}) {		# '' ==  unsupported protocol
-		return '';
-	} elsif ($_[0] =~ m{^/}) {
-		return 'root';
-	} elsif ($_[0] =~ m{^[[:alnum:]]}) {
-		return 'relative';
-	} elsif ($_[0] =~ m{^\.}) {
-		return 'relative';
-	} else {
-		return '';			# '' == unsupported protocol
-	}
-}
-
-sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
-	my $cururl = $_[0];
-	my $newurl = $_[1];
-	if (uri_class($newurl) eq 'root') {
-		$newurl = "gemini://" . gem_host($cururl) . $newurl;
-	} elsif (uri_class($newurl) eq 'relative') {
-		my $curdir = $cururl;
-		if ($curdir =~ m{://.+/}) {
-			$curdir = substr($cururl, 0, rindex($cururl, '/'));
-		}
-		while ($newurl =~ m{^\.{1,2}/?}) {
-			$newurl =~ s/^\.\///;
-			if ($newurl =~ m{^\.\./?}) {
-				$curdir =~ s/\/[^\/]*\/?$//;
-				$newurl =~ s/^\.\.\/?//;
-			}
-		}
-		if (not $newurl =~ m{^/} && not $curdir =~ m{/$}) {
-			$newurl = $curdir . '/' . $newurl;
-		} else {
-			$newurl = $curdir . $newurl;
-		}
-	}
-	return $newurl;		# no change if $newurl is already absolute
-}
-
 sub gem_host {
 	my $input = $_[0];
 	my $out = substr $input, 9;	# remove leading 'gemini://'
@@ -575,7 +532,7 @@ if ($opt_pledge) {
 
 ### Request loop ###
 
-init_request \@pod, \@bookmarks, \@history, \@subscriptions;
+init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
 # TODO: empty/undef all these arrays after init_request?
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;

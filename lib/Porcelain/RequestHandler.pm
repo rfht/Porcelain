@@ -7,12 +7,17 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(init_request request);
 
+use Any::URI::Escape;		# to handle percent encoding (uri_escape())
+use Encode qw(encode decode);
 use File::LibMagic;
 use Porcelain::Crypto;
 use Porcelain::CursesUI;	# for displaying status updates and prompts
+use Porcelain::Porcelain;
 
 my @supported_protocols = ("gemini", "file", "about");
 my $host_cert;
+my $redirect_count = 0;
+my $max_redirect = 5;	# TODO: allow custom value in config
 
 # about pages
 my @bookmarks;
@@ -73,6 +78,7 @@ sub init_request {
 	@bookmarks = @{$_[1]};
 	@history = @{$_[2]};
 	@subscriptions = @{$_[3]};
+	@client_certs = @{$_[4]};
 }
 
 sub parse_mime_ext {	# determine how to parse/format based on MIME type and optionally filename extension
@@ -89,6 +95,15 @@ sub parse_mime_ext {	# determine how to parse/format based on MIME type and opti
 
 sub fileext {	# simple sub to return the file extension. params: filename --> return: extension (e.g. '.ogg')
 	return "." . $_[0] =~ s/.*\.//r;
+}
+
+sub find_client_key {	# find best match for client_key. params: address --> return: 
+	my ($addr) = @_;
+	my $ret = undef;
+	foreach (keys %client_certs) {
+		$ret = $_ if length($_) > length($ret) && $_ eq substr($addr, 0, length($_));
+	}
+	return $ret;
 }
 
 sub addr2dom {	# get the domain of an address. address needs to be _without_ leading 'gemini://'!
@@ -121,7 +136,7 @@ sub request {	# first line to process all requests for an address. params: addre
 		# get content from file
 		# TODO: allow custom openers for text/gemini or text/plain?
 		if ($render_format ne "unsupported") {
-			@content = Porcelain::Porcelain::readtext $addr;
+			@content = readtext $addr;
 		} else {
 			if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
 				system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
@@ -140,9 +155,9 @@ sub request {	# first line to process all requests for an address. params: addre
 		# TODO: check if client cert is associated; if so, set $client_cert and $client_key
 		my ($domain, $port) = addr2dom $addr;
 		$port = 1965 unless $port;
-		my ($client_cert, $client_key);
+		my ($client_cert, $client_key) = $client_certs{find_client_key $addr} || (undef, undef);
 		undef $host_cert;		# TODO: really needed? Can this line be removed somehow?
-		(my $response, my $err, $host_cert) = sslcat_porcelain($domain, $port, "$addr\r\n", $client_cert, $client_key);
+		(my $response, my $err, $host_cert) = sslcat_porcelain($domain, $port, "gemini://$addr\r\n", $client_cert, $client_key);
 		die "Error while trying to establish TLS connection: $!" if $err;	# TODO: die => clean_die;
 
 		# TOFU
@@ -165,7 +180,65 @@ sub request {	# first line to process all requests for an address. params: addre
 		}
 
 		# Process response header
-		# if SUCCESS (2x), check MIME type, set content if compatible
+		@content = lines(decode('UTF-8', $response));	# TODO: support non-UTF8 encodings?
+		my ($status, $meta) = sep(shift @content);
+		my $shortstatus = substr $status, 0, 1;
+		$redirect_count = 0 if $shortstatus != 3;
+		if ($shortstatus == 1) {
+			my $input = uri_escape(c_prompt_str $meta . ": ");	# TODO: check that meta doesn't end in ':'?
+			return $addr . "?" . $input if $input;
+			return $addr;
+			# 10: input
+			# 11: sensitive input
+		} elsif ($shortstatus == 2) {
+			# 20: success
+			$render_format = parse_mime_ext($meta, $addr);	# TODO: deal with language etc in $meta
+			# TODO: allow custom openers for text/gemini or text/plain?
+			if ($render_format eq "unsupported") {
+				if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
+					system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
+					return "about:new";
+				} elsif (defined $Porcelain::Main::open_with{fileext($addr)}) {
+					system("$Porcelain::Main::open_with{fileext($addr)} $addr");
+					return "about:new";
+				} else {
+					# failed to open; set error page
+					return "about:error";
+				}
+			}
+		} elsif ($shortstatus == 3) {
+			die "ERROR: too many redirects" if ++$redirect_count > $max_redirect;
+			# TODO: add config option to require confirmation for all redirects
+			my $redir_addr = url2absolute("gemini://" . $addr, $meta);
+			die "ERROR: cross-protocol redirects not allowed" if not $redir_addr =~ m{^gemini://};
+			return $redir_addr;
+			# 30: temporary redirect
+			# 31: permanent redirect
+		} elsif ($shortstatus == 4) {
+			return "about:error";
+			# 40: temporary failure
+			# 41: server unavailable
+			# 42: CGI error
+			# 43: proxy error
+			# 44: slow down
+		} elsif ($shortstatus == 5) {
+			return "about:error";
+			# 50: permanent failure
+			# 51: not found
+			# 52: gone
+			# 53: proxy request refused
+			# 59: bad request
+		} elsif ($shortstatus == 6) {
+			# TODO: prompt certificate assignment
+			# TODO: store certificate
+			# TODO: store entry in '~/.porcelain/client_certs
+			# 60: client certificate required
+			# 61: client certificate not authorised
+			# 62: certificate not valid
+		} else {
+			die "Invalid status code in response: $status; meta: $meta";
+		}
+
 	} elsif ($conn eq "unsupported") {
 		# check if handler registered; if so, invoke handler
 		my $protocol = (split ":", $addr)[0];

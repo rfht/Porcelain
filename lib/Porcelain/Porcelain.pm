@@ -68,4 +68,50 @@ sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	return wantarray ? ($first, $rest) : $first;
 }
 
+sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
+	if ($_[0] =~ m{^[[:alpha:]]+://}) {
+		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;
+	} elsif ($_[0] =~ m{^about:}) {
+		return 'about';
+	} elsif ($_[0] =~ m{^mailto:}) {
+		return 'mailto';
+	} elsif ($_[0] =~ m{://}) {		# '' ==  unsupported protocol
+		return '';
+	} elsif ($_[0] =~ m{^/}) {
+		return 'root';
+	} elsif ($_[0] =~ m{^[[:alnum:]]}) {
+		return 'relative';
+	} elsif ($_[0] =~ m{^\.}) {
+		return 'relative';
+	} else {
+		return '';			# '' == unsupported protocol
+	}
+}
+
+sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
+	my $cururl = $_[0];
+	my $newurl = $_[1];
+	if (uri_class($newurl) eq 'root') {
+		$newurl = "gemini://" . gem_host($cururl) . $newurl;
+	} elsif (uri_class($newurl) eq 'relative') {
+		my $curdir = $cururl;
+		if ($curdir =~ m{://.+/}) {
+			$curdir = substr($cururl, 0, rindex($cururl, '/'));
+		}
+		while ($newurl =~ m{^\.{1,2}/?}) {
+			$newurl =~ s/^\.\///;
+			if ($newurl =~ m{^\.\./?}) {
+				$curdir =~ s/\/[^\/]*\/?$//;
+				$newurl =~ s/^\.\.\/?//;
+			}
+		}
+		if (not $newurl =~ m{^/} && not $curdir =~ m{/$}) {
+			$newurl = $curdir . '/' . $newurl;
+		} else {
+			$newurl = $curdir . $newurl;
+		}
+	}
+	return $newurl;		# no change if $newurl is already absolute
+}
+
 1;
