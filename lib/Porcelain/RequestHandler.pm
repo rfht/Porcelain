@@ -151,9 +151,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			}
 		}
 	} elsif ($conn eq "gemini") {
-
 		# TLS connection (TODO: check if TLS 1.3 needs to be enforced)
-		# TODO: check if client cert is associated; if so, set $client_cert and $client_key
 		my ($domain, $port) = addr2dom $addr;
 		$port = 1965 unless $port;
 		my ($client_cert, $client_key) = (undef, undef);
@@ -234,9 +232,19 @@ sub request {	# first line to process all requests for an address. params: addre
 			# 53: proxy request refused
 			# 59: bad request
 		} elsif ($shortstatus == 6) {
-			# TODO: prompt certificate assignment
-			# TODO: store certificate
-			# TODO: store entry in '~/.porcelain/client_certs
+			# TODO: add option to go back in history
+			do {
+				$r = c_prompt_ch "Client certificate requested, but no valid one found. Create new cert for $addr? [Yn]";
+			} until $r =~ /^[YyNn]*$/;
+			chomp $r;
+			if (length($r) == 0 || lc($r) eq "y") {
+				do {
+					$r = c_prompt_ch "Enter certificate lifetime in days: ";
+				} until $r =~ /^\d+$/;
+				my $sha = gen_identity $r;
+				$client_certs{$addr} = $sha;
+			}
+			return $addr;
 			# 60: client certificate required
 			# 61: client certificate not authorised
 			# 62: certificate not valid
