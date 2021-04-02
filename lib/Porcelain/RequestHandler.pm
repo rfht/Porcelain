@@ -21,6 +21,7 @@ my $max_redirect = 5;	# TODO: allow custom value in config
 
 # about pages
 my @bookmarks;
+my %client_certs;
 my @config;
 my @help;
 my @history;
@@ -78,7 +79,7 @@ sub init_request {
 	@bookmarks = @{$_[1]};
 	@history = @{$_[2]};
 	@subscriptions = @{$_[3]};
-	@client_certs = @{$_[4]};
+	%client_certs = map {split /\s+/} @{$_[4]};
 }
 
 sub parse_mime_ext {	# determine how to parse/format based on MIME type and optionally filename extension
@@ -155,7 +156,10 @@ sub request {	# first line to process all requests for an address. params: addre
 		# TODO: check if client cert is associated; if so, set $client_cert and $client_key
 		my ($domain, $port) = addr2dom $addr;
 		$port = 1965 unless $port;
-		my ($client_cert, $client_key) = $client_certs{find_client_key $addr} || (undef, undef);
+		my ($client_cert, $client_key) = (undef, undef);
+		if (my $client_key_addr = find_client_key $addr) {
+			($client_cert, $client_key) = $client_certs{find_client_key $addr};
+		}
 		undef $host_cert;		# TODO: really needed? Can this line be removed somehow?
 		(my $response, my $err, $host_cert) = sslcat_porcelain($domain, $port, "gemini://$addr\r\n", $client_cert, $client_key);
 		die "Error while trying to establish TLS connection: $!" if $err;	# TODO: die => clean_die;
@@ -192,7 +196,8 @@ sub request {	# first line to process all requests for an address. params: addre
 			# 11: sensitive input
 		} elsif ($shortstatus == 2) {
 			# 20: success
-			$render_format = parse_mime_ext($meta, $addr);	# TODO: deal with language etc in $meta
+			my ($mime) = $meta =~ /^([[:alpha:]\/]+)/;
+			$render_format = parse_mime_ext($mime, $addr);	# TODO: deal with language etc in $meta
 			# TODO: allow custom openers for text/gemini or text/plain?
 			if ($render_format eq "unsupported") {
 				if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with

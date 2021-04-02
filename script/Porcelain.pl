@@ -142,6 +142,7 @@ my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
 our $idents_dir = $porcelain_dir . "/idents";
 
 my @bookmarks;
+my @client_certs;
 my @config;
 my @history;
 our @known_hosts;
