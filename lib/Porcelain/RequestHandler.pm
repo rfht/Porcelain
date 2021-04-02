@@ -120,6 +120,7 @@ sub request {	# first line to process all requests for an address. params: addre
 	@stdin = @{$_[1]};
 	my @content;
 	my $render_format = undef;	# can be "gemini" or "plain"
+	my $mime = undef;
 
 	### Determine connection type and obtain content ###
 	my ($conn, $addr) = conn_parse $rq_addr;
@@ -132,7 +133,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			return "about:error";
 		}
 		my $magic = File::LibMagic->new;
-		my $mime = $magic->info_from_filename($addr)->{mime_type};
+		$mime = $magic->info_from_filename($addr)->{mime_type};
 		$render_format = parse_mime_ext $mime, $addr;
 		# get content from file
 		# TODO: allow custom openers for text/gemini or text/plain?
@@ -194,7 +195,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			# 11: sensitive input
 		} elsif ($shortstatus == 2) {
 			# 20: success
-			my ($mime) = $meta =~ /^([[:alpha:]\/]+)/;
+			($mime) = $meta =~ /^([[:alpha:]\/]+)/;
 			$render_format = parse_mime_ext($mime, $addr);	# TODO: deal with language etc in $meta
 			# TODO: allow custom openers for text/gemini or text/plain?
 			if ($render_format eq "unsupported") {
@@ -264,11 +265,28 @@ sub request {	# first line to process all requests for an address. params: addre
 	} else {
 		die "unable to process connection type: $conn";	# should not be reachable
 	}
-	clean_exit "conn: $conn, addr: $addr, content length: " . scalar(@content) . "\n" . $content[0];
 
 	### Render Content ###
 
+	if ($render_format eq "gemini") {
+	} elsif ($render_format eq "plain") {
+	} elsif ($render_format eq "unsupported") {
+		if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
+			system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
+			return "about:new";
+		} elsif (defined $Porcelain::Main::open_with{fileext($addr)}) {
+			system("$Porcelain::Main::open_with{fileext($addr)} $addr");
+			return "about:new";
+		} else {
+			# failed to open; set error page
+			return "about:error";
+		}
+	} else {
+		die "ERROR: Did not receive valid render_format to proceed.";
+	}
+
 	### Navigation ###
+	clean_exit "reached Navigation";
 }
 
 1;
