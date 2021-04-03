@@ -12,6 +12,7 @@ use Encode qw(encode decode);
 use File::LibMagic;
 use Porcelain::Crypto;
 use Porcelain::CursesUI;	# for displaying status updates and prompts
+use Porcelain::Nav;
 use Porcelain::Porcelain;
 
 my @supported_protocols = ("gemini", "file", "about");
@@ -121,6 +122,7 @@ sub request {	# first line to process all requests for an address. params: addre
 	my @content;
 	my $render_format = undef;	# can be "gemini" or "plain"
 	my $mime = undef;
+	my $domain = undef;
 
 	### Determine connection type and obtain content ###
 	my ($conn, $addr) = conn_parse $rq_addr;
@@ -153,7 +155,7 @@ sub request {	# first line to process all requests for an address. params: addre
 		}
 	} elsif ($conn eq "gemini") {
 		# TLS connection (TODO: check if TLS 1.3 needs to be enforced)
-		my ($domain, $port) = addr2dom $addr;
+		($domain, my $port) = addr2dom $addr;
 		$port = 1965 unless $port;
 		my ($client_cert, $client_key) = (undef, undef);
 		if (my $client_key_addr = find_client_key $addr) {
@@ -266,11 +268,8 @@ sub request {	# first line to process all requests for an address. params: addre
 		die "unable to process connection type: $conn";	# should not be reachable
 	}
 
-	### Render Content ###
-
-	if ($render_format eq "gemini") {
-	} elsif ($render_format eq "plain") {
-	} elsif ($render_format eq "unsupported") {
+	### Handle unsupported render_format ###
+	if ($render_format eq "unsupported") {
 		if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
 			system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
 			return "about:new";
@@ -281,12 +280,9 @@ sub request {	# first line to process all requests for an address. params: addre
 			# failed to open; set error page
 			return "about:error";
 		}
-	} else {
-		die "ERROR: Did not receive valid render_format to proceed.";
 	}
 
-	### Navigation ###
-	clean_exit "reached Navigation";
+	return page_nav $domain, $render_format, \@content;
 }
 
 1;

@@ -9,6 +9,8 @@ our @EXPORT = qw(page_nav);
 
 use Curses;			# for $COLS
 use List::Util qw(min max);
+use Porcelain::CursesUI;
+use Porcelain::Format;
 
 use subs qw(Porcelain::Main::open_about);
 
@@ -36,7 +38,7 @@ sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $di
 }
 
 sub page_nav {
-	my ($content) = @_;
+	my ($domain, $renderformat, $content) = @_;
 	my @formatted;
 	undef @Porcelain::Main::links;
 
@@ -44,9 +46,6 @@ sub page_nav {
 	my $render_length;
 	my $update_viewport;
 	my $reflow_text = 1;
-
-	my $domainname = Porcelain::Main::gem_host($Porcelain::Main::rq_addr);
-
 	while (1) {
 		if (defined $Porcelain::Main::status_win) {
 			delwin($Porcelain::Main::status_win);
@@ -55,7 +54,11 @@ sub page_nav {
 		if ($reflow_text) {
 			$reflow_text = 0;
 			$update_viewport = 1;
-			Porcelain::Format::gmiformat $content, \@formatted, \@Porcelain::Main::links;
+			if ($renderformat eq "gemini") {
+				gmiformat $content, \@formatted, \@Porcelain::Main::links;
+			} elsif ($renderformat eq "plain") {
+				plainformat $content, \@formatted;
+			}
 			$render_length = scalar(@formatted);
 		}
 
@@ -68,12 +71,8 @@ sub page_nav {
 		}
 		$update_viewport = 0;
 		my ($c, $fn) = getchar;		# $fn: a function key, like arrow keys etc
-		if (! defined $c) {	# do this dance so that $c and $fn are not undefined
-			$c = '';
-		}
-		if (! defined $fn) {
-			$fn = 0x0;	# TODO: double-check that this doesn't conflict with any KEY_*
-		}
+		$c = '' if not defined $c;
+		$fn = 0x0 if not defined $fn;	# TODO: double-check that this doesn't conflict with any KEY_*
 		if ($c eq 'H') {	# show history
 			#Porcelain::Main::open_about "about:history";
 			return;
@@ -88,7 +87,7 @@ sub page_nav {
 			#	- type
 			#	- date last renewed
 			#	- time since last renewal
-			my @info = ("Domain:\t\t\t" . $domainname, "Resource:\t\t" . $Porcelain::Main::rq_addr);
+			my @info = ("Domain:\t\t\t" . $domain, "Resource:\t\t" . $Porcelain::Main::rq_addr);
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
 			push @info, "\t\t\tSubject:\t\t" . $Porcelain::Main::host_cert->subject();

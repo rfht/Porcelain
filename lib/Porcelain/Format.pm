@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(center_text gmiformat preformat_linklist);
+our @EXPORT = qw(center_text gmiformat plainformat preformat_linklist);
 
 use Curses;	# for $COLS
 use Text::CharWidth qw(mbswidth);
@@ -19,20 +19,25 @@ sub center_text {	# string --> string with leading space to position in center o
 	return (" " x $adjust) . $str;
 }
 
-# format $line by breaking it into multiple line if needed.  $extra is
-# the length of the prepended string when rendered, $p1 and $p2 the
+# format $line by breaking it into multiple line if needed. $p1 and $p2 are the
 # prefixes added to the first and the following lines respectively.
 sub fmtline {
-	my ($line, $outarray, $extra, $p1, $p2) = @_;
-	my $prefix = $p1 || '';
-	my $cols = $COLS + $extra;
-
-	if (mbswidth($line) + $extra > $cols) {
-		$Text::Wrap::columns = $cols;
-		$line = wrap($p1 || '', $p2 || $p1 || '', $line);
+	my ($line, $outarray, $p1, $p2) = @_;
+	$p1 = $p1 || '';
+	$p2 = $p2 || '';
+	if (mbswidth($line) > $COLS-1) {
+		$Text::Wrap::columns = $COLS-1;
+		$line = wrap($p1, $p2 || $p1, $line);
 		push @$outarray, split("\n", $line);
 	} else {
-		push @$outarray, $prefix . $line;	# needed to not kill empty lines
+		push @$outarray, $p1 . $line;	# needed to not kill empty lines
+	}
+}
+
+sub plainformat {	# format plaintext for screen
+	my ($inarray, $outarray) = @_;
+	foreach (@$inarray) {
+		fmtline($_, $outarray);
 	}
 }
 
