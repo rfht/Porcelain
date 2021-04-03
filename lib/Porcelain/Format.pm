@@ -11,6 +11,25 @@ use Curses;	# for $COLS
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
+my %line_prefixes = (
+	'`' => '',	# preformatted
+	'~' => '',	# preformatted cont.
+	'1' => '',	# heading1
+	'A' => '',	# heading1 cont.
+	'2' => '',	# heading2
+	'B' => '',	# heading2 cont.
+	'3' => '',	# heading3
+	'C' => '',	# heading3 cont.
+	'=' => '=> ',	# link
+	'+' => '   ',	# link cont.
+	'*' => '- ',	# item
+	'-' => '  ',	# item cont.
+	'>' => '> ',	# quote
+	'<' => '  ',	# quote cont.
+	':' => '',	# text
+	';' => '',	# text cont.
+);
+
 sub center_text {	# string --> string with leading space to position in center of terminal
 	my $str = $_[0];
 	my $colcenter = int($COLS / 2);
@@ -22,15 +41,17 @@ sub center_text {	# string --> string with leading space to position in center o
 # format $line by breaking it into multiple line if needed. $p1 and $p2 are the
 # prefixes added to the first and the following lines respectively.
 sub fmtline {
-	my ($line, $outarray, $p1, $p2) = @_;
+	my ($line, $outarray, $p1, $p2, $extra) = @_;
+	$extra = '' unless $extra;
 	$p1 = $p1 || '';
 	$p2 = $p2 || '';
-	if (mbswidth($line) > $COLS-1) {
-		$Text::Wrap::columns = $COLS-1;
-		$line = wrap($p1, $p2 || $p1, $line);
+	my $cols = $COLS - 1 - length($line_prefixes{$p1});
+	if (mbswidth($extra . $line) > $cols) {
+		$Text::Wrap::columns = $cols;
+		$line = wrap($p1 . $extra, $p2 . $extra, $line);
 		push @$outarray, split("\n", $line);
 	} else {
-		push @$outarray, $p1 . $line;	# needed to not kill empty lines
+		push @$outarray, $p1 . $extra . $line;
 	}
 }
 
@@ -51,17 +72,15 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 	foreach (@$inarray) {
 		if ($_ =~ /^```/) {
 			$t_preform = not $t_preform;
-			next;
-		}
-		if ($t_preform) {	# preformatted text. Don't mess it up.
+		} elsif ($t_preform) {	# preformatted text. Don't mess it up.
 			# TODO: use e.g. pad to allow lateral scrolling?
 			my $line = $_;
 			if (mbswidth($line) > $COLS) {
 				$Text::Wrap::columns = $COLS;
-				$line = wrap('', '', $line);
+				$line = wrap('`', '~', $line);
 				$line = (split("\n", $line))[0];
 			}
-			push @$outarray, "```" . $line;
+			push @$outarray, $line;
 		} else {
 			# TODO: transform tabs into single space?
 			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?
@@ -69,11 +88,11 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 			# TODO: find multiple serial empty lines and transform into just one?
 			my $line = $_ =~ s/\s*$//r;	# bye bye trailing whitespace TODO: apply to all lines incl preformatted?
 			if ($line =~ /^###\s*[^\s]/) {		# Heading 3	# are there any characters to print at all?
-				fmtline($line =~ s/^###\s*//r, $outarray, 0, '###');
+				fmtline($line =~ s/^###\s*//r, $outarray, '3', 'C');
 			} elsif ($line =~ /^##\s*[^\s]/) {	# Heading 2
-				fmtline($line =~ s/^##\s*//r, $outarray, 0, '##');
+				fmtline($line =~ s/^##\s*//r, $outarray, '2', 'B');
 			} elsif ($line =~ /^#\s*[\s]/) {	# Heading 1
-				fmtline($line =~ s/^#\s*//r, $outarray, 0, '#');
+				fmtline($line =~ s/^#\s*//r, $outarray, '1', 'A');
 			} elsif ($line =~ /^=>/) {		# Link
 				$num_links++;
 				$line =~ s/^=>\s*//;
@@ -85,13 +104,14 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 					$line = $link_descr;
 				}
 				my $p = "=>[" . $num_links . "] ";
-				fmtline($line, $outarray, length($p) - 4, $p, '=>' . ' ' x (length($p) - 2));
+				$line = "[" . $num_links . "] " . $line;
+				fmtline($line, $outarray, '=', '+');
 			} elsif ($line =~ /^\* /) {		# Unordered List
-				fmtline($line =~ s/^\*\s+//r, $outarray, 0, '* ', '**');
+				fmtline($line =~ s/^\*\s+//r, $outarray, '*', '-');
 			} elsif ($line =~ /^>/) {		# Quote
-				fmtline($line =~ s/^>\s*//r, $outarray, 0, '> ');
+				fmtline($line =~ s/^>\s*//r, $outarray, '>', '<');
 			} else {				# Regular Text
-				fmtline($line =~ s/^\s*//r, $outarray, 0);
+				fmtline($line =~ s/^\s*//r, $outarray, ':', ';');
 			}
 		}
 	}
