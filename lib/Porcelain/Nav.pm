@@ -65,8 +65,8 @@ sub page_nav {
 		my $displayrows = $LINES - 2;
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
-			Porcelain::CursesUI::c_title_win;
-			Porcelain::CursesUI::gmirender $viewfrom, $viewto, \@formatted, \@Porcelain::Main::links, $Porcelain::Main::searchstr;
+			c_title_win;
+			render $renderformat, $viewfrom, $viewto, \@formatted, \@Porcelain::Main::links, $Porcelain::Main::searchstr;
 			refresh;
 		}
 		$update_viewport = 0;

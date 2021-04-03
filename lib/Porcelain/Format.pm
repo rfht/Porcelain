@@ -11,7 +11,7 @@ use Curses;	# for $COLS
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
-my %line_prefixes = (
+our %line_prefixes = (
 	'`' => '',	# preformatted
 	'~' => '',	# preformatted cont.
 	'1' => '',	# heading1
