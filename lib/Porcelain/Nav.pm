@@ -38,7 +38,7 @@ sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $di
 }
 
 sub page_nav {
-	my ($domain, $renderformat, $content) = @_;
+	my ($domain, $addr, $valcert, $valdate, $renderformat, $host_cert, $content) = @_;
 	my @formatted;
 	undef @Porcelain::Main::links;
 
@@ -65,7 +65,7 @@ sub page_nav {
 		my $displayrows = $LINES - 2;
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
-			c_title_win;
+			c_title_win $host_cert, $addr, $valcert, $valdate;
 			render $renderformat, $viewfrom, $viewto, \@formatted, \@Porcelain::Main::links, $Porcelain::Main::searchstr;
 			refresh;
 		}

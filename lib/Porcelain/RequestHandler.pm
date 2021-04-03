@@ -19,6 +19,8 @@ my @supported_protocols = ("gemini", "file", "about");
 my $host_cert;
 my $redirect_count = 0;
 my $max_redirect = 5;	# TODO: allow custom value in config
+my $valcert;		# state of certificate validation. 3: verified; 2: TOFU; 1: new; 0: mismatch
+my $valdate;
 
 # about pages
 my @bookmarks;
@@ -167,21 +169,24 @@ sub request {	# first line to process all requests for an address. params: addre
 
 		# TOFU
 		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
-		my ($r, $details) = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
-		if ($r == 3) {
+		undef $valdate;
+		($valcert, my $details) = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
+		if ($valcert == 3) {
 			# (3, Date): Server verified, date is LAST date of verification (more recent is better)
-		} elsif ($r == 2) {
+			$valdate = $details;
+		} elsif ($valcert == 2) {
 			# (2, Date): TOFU ok, date is the ORIGINAL date that TOFU was stored (more distant is better)
-		} elsif ($r == 1) {
+			$valdate = $details;
+		} elsif ($valcert == 1) {
 			# (1, fingerprint): unknown host, fingerprint for storing
-		} elsif ($r == 0) {
+		} elsif ($valcert == 0) {
 			# (0, fingerprint): fingerprint mismatch, new fingerprint offered in case user wants to update it
 			c_err "fingerprint mismatch. [U]pdate fingerprint, [A]bort? ";
-		} elsif ($r == -1) {
+		} elsif ($valcert == -1) {
 			# (-1, string): unexpected error, see details in string
 			return "about:error";	# TODO: add details to the error
 		} else {
-			die "invalid response from sub validate_cert: $r, $details";	# should not be reached
+			die "invalid response from sub validate_cert: $valcert, $details";	# should not be reached
 		}
 
 		# Process response header
@@ -236,6 +241,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			# 59: bad request
 		} elsif ($shortstatus == 6) {
 			# TODO: add option to go back in history
+			my $r;
 			do {
 				$r = c_prompt_ch "Client certificate requested, but no valid one found. Create new cert for $addr? [Yn]";
 			} until $r =~ /^[YyNn]*$/;
@@ -281,8 +287,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			return "about:error";
 		}
 	}
-
-	return page_nav $domain, $render_format, \@content;
+	return page_nav $domain, $addr, $valcert, $valdate, $render_format, $host_cert, \@content;
 }
 
 1;

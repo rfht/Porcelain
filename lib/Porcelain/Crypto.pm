@@ -9,7 +9,7 @@ our @EXPORT = qw(gen_client_cert gen_identity gen_privkey store_cert store_privk
 
 use subs qw(c_warn);
 
-my $default_fp_algo = "sha256";
+our $default_fp_algo = "sha256";
 my $default_rsa_bits = 2048;
 my $rsa_exponent = 65537;
 my $r;		# hold short-term return values
