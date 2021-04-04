@@ -7,7 +7,8 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(center_text gmiformat plainformat preformat_linklist);
 
-use Curses;	# for $COLS
+use Curses;	# for $COLS	# TODO: find a more lightweight way to get $COLS
+use Porcelain::Porcelain;	# for sep
 use Text::CharWidth qw(mbswidth);
 use Text::Wrap;
 
@@ -96,7 +97,7 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 			} elsif ($line =~ /^=>/) {		# Link
 				$num_links++;
 				$line =~ s/^=>\s*//;
-				my ($link_url, $link_descr) = Porcelain::Porcelain::sep $line;
+				my ($link_url, $link_descr) = sep $line;
 				push @$linkarray, $link_url;
 				if ($link_descr =~ /^\s*$/) {	# if $link_descr is empty, use $link_url
 					$line = $link_url;

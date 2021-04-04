@@ -8,21 +8,21 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw(gen_client_cert gen_identity gen_privkey init_crypto store_cert store_privkey validate_cert sslcat_porcelain);
 
 use Net::SSLeay;
+use Porcelain::CursesUI;	# for c_warn
 
-use subs qw(c_warn);
+use constant DEFAULT_FP_ALGO => "sha256";
+use constant DEFAULT_RSA_BITS => 2048;
+use constant RSA_EXPONENT => 65537;
+my $fp_algo;
+my $rsa_bits;
 
-our $default_fp_algo = "sha256";
-my $default_rsa_bits = 2048;
-my $rsa_exponent = 65537;
 my $r;		# hold short-term return values
 
 sub gen_privkey {	# --> return private key
 	# see https://stackoverflow.com/questions/256405/programmatically-create-x509-certificate-using-openssl
 	my $pkey = Net::SSLeay::EVP_PKEY_new();
-	my $rsa = Net::SSLeay::RSA_generate_key($default_rsa_bits, $rsa_exponent) or die;	# returns value corresponding to openssl's RSA structur; other optional args: $perl_cb, $perl_cb_arg
+	my $rsa = Net::SSLeay::RSA_generate_key($rsa_bits || DEFAULT_RSA_BITS, RSA_EXPONENT) or die;	# returns value corresponding to openssl's RSA structur; other optional args: $perl_cb, $perl_cb_arg
 	Net::SSLeay::EVP_PKEY_assign_RSA($pkey, $rsa) or die;
-	#Net::SSLeay::RSA_free($rsa);	# TODO: not needed here?
-	#Net::SSLeay::EVP_PKEY_free($pkey);	# TODO: not needed here?
 	return $pkey;
 }
 
@@ -36,10 +36,8 @@ sub gen_client_cert {	# days for cert validity, private key --> return cert
 	Net::SSLeay::X509_gmtime_adj(Net::SSLeay::X509_get_notAfter($x509), 60 * 60 * 24 * $days_val);
 	Net::SSLeay::X509_set_pubkey($x509, $pkey);
 	my $sname = Net::SSLeay::X509_get_subject_name($x509);
-	#Net::SSLeay::X509_set_subject_name($x509, $sname);
 	Net::SSLeay::X509_set_issuer_name($x509, $sname);	# subject name and issuer name are the same - self-signed cert
 	Net::SSLeay::X509_sign($x509, $pkey, Net::SSLeay::EVP_sha1());	# TODO: is SHA-1 a reasonable algorithm here?
-	#Net::SSLeay::X509_free($x509);	# TODO: needed here?
 	return $x509;
 }
 
@@ -62,7 +60,7 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 	my $days = $_[0];
 	my $pkey = gen_privkey;
 	my $x509 = gen_client_cert($days, $pkey);
-	my $sha = lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr);
+	my $sha = lc(Net::SSLeay::X509_get_fingerprint($x509, $fp_algo || DEFAULT_FP_ALGO) =~ tr/://dr);
 	my $key_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".key";
 	my $crt_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".crt";
 	store_privkey $pkey, $key_out_file;
@@ -83,10 +81,11 @@ sub validate_cert {	# params: certificate, domainname, known_hosts array
 			# (-1, error string - something else went wrong)
 	my ($x509, $domain, $known_hosts) = @_;
 	# get sha256 fingerprint - it will be needed in all scenarios
-	my $fp = lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr);
-	my @kh_match = grep(/^$domain\s+$default_fp_algo/, @$known_hosts);	# is $domain in @$known_hosts?
+	my $algo = $fp_algo || DEFAULT_FP_ALGO;
+	my $fp = lc(Net::SSLeay::X509_get_fingerprint($x509, $algo) =~ tr/://dr);
+	my @kh_match = grep(/^$domain\s+$algo/, @$known_hosts);	# is $domain in @$known_hosts?
 	if (scalar(@kh_match) > 1) {
-		return (-1, "more than 1 match in known_hosts for $domain + $default_fp_algo");
+		return (-1, "more than 1 match in known_hosts for $domain + $algo");
 	} elsif (scalar(@kh_match) == 0) {
 		return (1, $fp);		# host not known
 	} elsif (scalar(@kh_match) == 1) {
@@ -98,7 +97,7 @@ sub validate_cert {	# params: certificate, domainname, known_hosts array
 			return (0, $fp);
 		}
 	} else {
-		return (-1, "unexpected error trying to find $domain + $default_fp_algo in known_hosts");
+		return (-1, "unexpected error trying to find $domain + $algo in known_hosts");
 	}
 }
 
