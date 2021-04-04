@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(gen_client_cert gen_identity gen_privkey init_crypto
+our @EXPORT = qw(fingerprint gen_client_cert gen_identity gen_privkey init_crypto
 		store_cert store_privkey validate_cert sslcat_porcelain
 		$idents_dir
 );
@@ -62,11 +62,16 @@ sub store_cert {	# x509 cert, filename -->
 	close $fh;
 }
 
+sub fingerprint {
+	my ($cert, $algo) = @_;
+	return lc(Net::SSLeay::X509_get_fingerprint($cert, $algo || DEFAULT_FP_ALGO) =~ tr/://dr);
+}
+
 sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in days --> sha256 of the new cert
 	my $days = $_[0];
 	my $pkey = gen_privkey;
 	my $x509 = gen_client_cert($days, $pkey);
-	my $sha = lc(Net::SSLeay::X509_get_fingerprint($x509, $fp_algo || DEFAULT_FP_ALGO) =~ tr/://dr);
+	my $sha = fingerprint($x509);
 	my $key_out_file = $idents_dir . "/" . $sha . ".key";
 	my $crt_out_file = $idents_dir . "/" . $sha . ".crt";
 	store_privkey $pkey, $key_out_file;
@@ -88,7 +93,7 @@ sub validate_cert {	# params: certificate, domainname, known_hosts array
 	my ($x509, $domain, $known_hosts) = @_;
 	# get sha256 fingerprint - it will be needed in all scenarios
 	my $algo = $fp_algo || DEFAULT_FP_ALGO;
-	my $fp = lc(Net::SSLeay::X509_get_fingerprint($x509, $algo) =~ tr/://dr);
+	my $fp = fingerprint($x509);
 	my @kh_match = grep(/^$domain\s+$algo/, @$known_hosts);	# is $domain in @$known_hosts?
 	if (scalar(@kh_match) > 1) {
 		return (-1, "more than 1 match in known_hosts for $domain + $algo");

@@ -9,12 +9,16 @@ our @EXPORT = qw(page_nav);
 
 use Curses;			# for $COLS
 use List::Util qw(min max);
+use Net::SSLeay;
+use Porcelain::Crypto;
 use Porcelain::CursesUI;
 use Porcelain::Format;
 use Porcelain::Porcelain;
 
 my @last_links;	# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
+
+my $searchstr = '';	# search string
 
 my $r;	# holds return value short-term
 
@@ -68,7 +72,7 @@ sub page_nav {
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
 			c_title_win $host_cert, $addr, $valcert, $valdate;
-			render $renderformat, $viewfrom, $viewto, \@formatted, \@links, $Porcelain::Main::searchstr;
+			render $renderformat, $viewfrom, $viewto, \@formatted, \@links, $searchstr;
 			refresh;
 		}
 		$update_viewport = 0;
@@ -92,21 +96,12 @@ sub page_nav {
 			my @info = ("Domain:\t\t\t" . $domain, "Resource:\t\t" . $addr);
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
-			push @info, "\t\t\tSubject:\t\t" . $Porcelain::Main::host_cert->subject();
-			#push @info, "\t\t\tSubject Hash:\t\t" . $Porcelain::Main::host_cert->hash();
-			push @info, "\t\t\tEmail:\t\t\t" . $Porcelain::Main::host_cert->email();
-			push @info, "\t\t\tIssuer:\t\t\t" . $Porcelain::Main::host_cert->issuer();
-			#push @info, "\t\t\tIssuer Hash:\t" . $Porcelain::Main::host_cert->issuer_hash();
-			push @info, "\t\t\tNot Valid Before:\t" . $Porcelain::Main::host_cert->notBefore();
-			push @info, "\t\t\tNot Valid After:\t" . $Porcelain::Main::host_cert->notAfter();
-			#push @info, "\t\t\tModulus:\t\t" . $Porcelain::Main::host_cert->modulus();		# TODO: how useful is modulus? Exponent?
-			#push @info, "\t\t\tExponent:\t\t" . $Porcelain::Main::host_cert->exponent();
-			push @info, "\t\t\tFingerprint SHA-256:\n\t\t\t" . $Porcelain::Main::host_cert->fingerprint_sha256(); # TODO: improve formatting
-			push @info, "\t\t\tCertificate Version:\t" . $Porcelain::Main::host_cert->version();
-			push @info, "\t\t\tSignature Algorithm:\t" . $Porcelain::Main::host_cert->sig_alg_name();
-			push @info, "\t\t\tPublic Key Algorithm:\t" . $Porcelain::Main::host_cert->key_alg_name();
-			if ($Porcelain::Main::host_cert->is_selfsigned()) {
-				push @info, "\t\t\tSelf-signed?\t\tYes"; } else { push @info, "\t\t\tSelf-signed?:\t\tNo"; } push @info, "\n\n" . randomart(lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = c_fullscr join("\n", @info), "Info";
+			push @info, "\t\t\tSubject:\t\t" . Net::SSLeay::X509_get_subject_name($host_cert);
+			push @info, "\t\t\tIssuer:\t\t\t" . Net::SSLeay::X509_NAME_oneline(Net::SSLeay::X509_get_issuer_name($host_cert));
+			push @info, "\t\t\tNot Valid Before:\t" . Net::SSLeay::P_ASN1_TIME_get_isotime(Net::SSLeay::X509_get_notBefore($host_cert));
+			push @info, "\t\t\tNot Valid After:\t" . Net::SSLeay::P_ASN1_TIME_get_isotime(Net::SSLeay::X509_get_notAfter($host_cert));
+			push @info, "\t\t\tFingerprint:\n\t\t\t" . fingerprint($host_cert); # TODO: improve formatting
+			push @info, "\n\n" . randomart(lc($host_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
 			delwin($infowin);
@@ -137,17 +132,17 @@ sub page_nav {
 				my $match_win_height = max(int($displayrows / 1.25), 12);
 				my $match_win = newwin($match_win_height, $match_win_width, int(($displayrows - $match_win_height) / 2), int(($COLS - $match_win_width) / 2)); 
 				box($match_win, 0, 0);
-				addstr($match_win, 1, 1, $Porcelain::Main::host_cert->fingerprint_sha256());
-				addstr($match_win, 3, 1, randomart(lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)));
+				addstr($match_win, 1, 1, $host_cert->fingerprint_sha256());
+				addstr($match_win, 3, 1, randomart(lc($host_cert->fingerprint_sha256() =~ tr/://dr)));
 				addstr($match_win, $match_win_height - 2, 1, "Compare with SHA-256 fingerprint obtained from a credible source. Does it match?");
 				refresh($match_win);
 				$r = getch;
 				unless (lc($r) eq 'y') {
 					return;
 				}
-				# TODO: store the $sha256 (from $Porcelain::Main::host_cert) in known_hosts
+				# TODO: store the $sha256 (from $host_cert) in known_hosts
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
-				if ($r eq lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)) {
+				if ($r eq lc($host_cert->fingerprint_sha256() =~ tr/://dr)) {
 					clean_exit "SHA-256 match";
 				} else {
 					clean_exit "SHA-256 mismatch";
@@ -242,8 +237,8 @@ sub page_nav {
 			$update_viewport = 1;
 			clean_exit;
 		} elsif ($c eq '/') {
-			$Porcelain::Main::searchstr = c_prompt_str("search: ");
-			@Porcelain::Main::searchlns = grep { $formatted[$_] =~ /$Porcelain::Main::searchstr/i } 0..$#formatted;
+			$searchstr = c_prompt_str("search: ");
+			@Porcelain::Main::searchlns = grep { $formatted[$_] =~ /$searchstr/i } 0..$#formatted;
 			my $viewfrom_new = next_match \@Porcelain::Main::searchlns, $viewfrom, $displayrows, $render_length;
 			if (defined $viewfrom_new) {
 				$viewfrom = $viewfrom_new;
