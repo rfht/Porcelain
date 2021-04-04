@@ -112,6 +112,8 @@ my $redirect_max = 5;	# TODO: allow setting this in the config
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
 our $idents_dir = $porcelain_dir . "/idents";
 
+my $podfile = "$FindBin::Bin/../pod/Porcelain.pod";
+
 my @bookmarks;
 my @client_certs;
 my @config;
@@ -162,7 +164,7 @@ GetOptions (
 		"conf|c=s"	=> \$configfile,
 		"dump|d"	=> \$opt_dump,
 		"help|h"	=> sub { Getopt::Long::HelpMessage() },
-		"man|m"		=> sub { pod2usage(-exitval => 0, -verbose => 2) },
+		"man|m"		=> sub { pod2usage(-input => $podfile, -exitval => 0, -verbose => 2) },
 		"pledge!"	=> \$opt_pledge,	# --nopledge disables
 		"file|f=s"	=> \$file_in,
 		"unveil!"	=> \$opt_unveil,	# --nounveil disables
@@ -216,7 +218,7 @@ init_crypto;
 
 # Make pod2usage text usable in about:pod/about:man
 open my $fh, '>', \my $text;
-pod2usage(-output => $fh, -exitval => 'NOEXIT', -verbose => 2);
+pod2usage(-input => $podfile, -output => $fh, -exitval => 'NOEXIT', -verbose => 2);
 close $fh;
 my @pod = split "\n", $text;
 undef $text;
@@ -250,11 +252,10 @@ if ($opt_pledge) {
 	use OpenBSD::Pledge;
 	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
 	# TODO: remove cpath by creating the files with the installer or before unveil/pledge?
-	# TODO: can tty pledge be removed after Curses has been initialized?
 	#	sslcat_porcelain:		rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
-	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it
+	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it - TODO: investigate why
 	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec ) ) || die "Unable to pledge: $!";
 }
 
@@ -267,161 +268,3 @@ while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' 
 }
 
 clean_exit "Bye...";
-
-__END__
-
-=head1 NAME
-
-B<Porcelain> - a gemini browser
-
-=head1 SYNOPSIS
-
-porcelain [-hmv]
-
-porcelain [-d] [--nopledge] [--nounveil] [url|-f file]
-
-Options:
-  -h/--help	brief help message
-  -m/--man	full documentation
-  -v/--version	version information
-  -d/--dump	dump rendered page to standard output
-  --nopledge	disable pledge system call restrictions
-  --nounveil	disable unveil file hierarchy restrictions
-  -f/--file	open file (use '-' for standard input)
-
-=head1 DESCRIPTION
-
-B<Porcelain> is a text-based browser for gemini pages. It uses
-OpenBSD's pledge and unveil technologies. The goal of B<Porcelain> is to
-be a "spec-preserving" gemini browser, meaning no support for
-non-spec extension attempts (like favicons, metadata). Automatic opening
-or inline display of non-gemini/text content is opt-in.
-
-If you open a URL (either passed from CLI or opened in B<Porcelain>),
-B<Porcelain> will determine the protocol for the connection and try to
-obtain the resource. The 'gemini' protocols are supported
-by default. You can specify applications to open other protocols like
-'https' in ~/.porcelain/open.conf.
-
-If the protocol is supported, B<Porcelain> will try to determine the
-MIME type of the resource. MIME type text/gemini is supported natively.
-Other MIME types like 'image/png' can be opened with external programs
-specified in ~/.porcelain/open.conf.
-
-If the MIME type is not known or cannot be determined, B<Porcelain> will
-try to find the extension (like '.gmi') in ~/.porcelain/open.conf.
-
-If the --file/-f option is used, B<Porcelain> will unveil the directory
-containing the file (including all subdirectories).
-
-=head2 KEYS
-
-=over
-
-=item H
-
-Display browsing history.
-
-=item o
-
-Open a new link (prompts for link)
-
-=item i
-
-Show short info.
-
-=item I
-
-Show detailed info.
-
-=item q
-
-Quit the application.
-
-=item Backspace/Ctrl-H
-
-Go back in browsing history.
-
-=item Ctrl-L
-
-Go forward in browsing history.
-
-=item n
-
-Next matching text.
-
-=item u
-
-Go up in the domain hierarchy.
-
-=item r
-
-Go to root of the domain. 
-
-=item R
-
-Reload/refresh page.
-
-=item Space/PageDown
-
-Scroll down page-wise.
-
-=item b/PageUp
-
-Scroll up page-wise.
-
-=item j/Down
-
-Scroll down line-wise.
-
-=item k/Up
-
-Scroll up line-wise.
-
-=item K/Home
-
-Go to the beginning of the page.
-
-=item J/End
-
-Go to the end of the page.
-
-=item v
-
-Verification for server identity. Prompts for manual comparison, SHA-256 hash, or a third-party resource.
-
-=item 1,2,3,...
-
-Open link with that number.
-
-=item /
-
-Search page for text.
-
-=item :
-
-Command entry.
-
-=back
-
-=head1 EXIT STATUS
-
-=head1 CONFIGURATION
-
-=head1 DEPENDENCIES
-
-=head1 FILES
-
-~/.porcelain/known_hosts
-
-~/.porcelain/open.conf
-
-=head1 BUGS AND LIMITATIONS
-
-=head1 AUTHOR
-
-=head1 LICENSE AND COPYRIGHT
-
-=head1 DISCLAIMER OF WARRANTY
-
-=cut
