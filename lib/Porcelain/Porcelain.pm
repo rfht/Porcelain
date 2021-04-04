@@ -7,8 +7,6 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(lines readconf readtext sep uri_class);
 
-use Porcelain::CursesUI;	# TODO: address endless include loop
-
 sub lines {	# multi-line text scalar --> $first_line / @lines
 	my @lines = (split /\n/, $_[0]);
 	return wantarray ? @lines : $lines[0];
@@ -37,7 +35,7 @@ sub readconf {	# filename of file with keys and values separated by ':'--> hash 
 }
 
 sub readtext { # read text file, line by line. param: filepath --> return: array of lines
-	my @r_array;	# return array
+	my @r_array;
 	open my $fh, '<', $_[0] or die "cannot open $_[0]";
 	while (<$fh>) {
 		chomp;
@@ -53,6 +51,7 @@ sub sep {	# gmi string containing whitespace --> ($first, $rest)
 	return wantarray ? ($first, $rest) : $first;
 }
 
+# TODO: can this be simplified/replaced?
 sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 	if ($_[0] =~ m{^[[:alpha:]]+://}) {
 		return $_[0] =~ s/^([[:alpha:]]+):\/\/.*$/$1/r;

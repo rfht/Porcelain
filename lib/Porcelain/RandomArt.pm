@@ -36,7 +36,6 @@ sub randomart {
         my %origin;
         $x = $origin{ x } = floor( $size{ x } / 2 );
         $y = $origin{ y } = floor( $size{ y } / 2 );
-
         $i = 0;
         while( $i < @digest_bytes ) {
             my $byte;
@@ -58,16 +57,12 @@ sub randomart {
             }
             $i += 1;
         }
-
         $field[ $origin{ x } ][ $origin{ y } ] = $palette_cap - 1;
         $field[ $x ][ $y ] = $palette_cap;
     }
-
     my @art;
-
     push @art, '+', ( '-' x $size{ x } ), '+';
     push @art, "\n";
-
     my $y = 0;
     while ( $y < $size{ y } ) {
         push @art, '|';
@@ -80,9 +75,7 @@ sub randomart {
         push @art, "\n";
         $y += 1;
     }
-
     push @art, '+', ( '-' x $size{ x } ), '+';
-
     return join '', @art;
 }
 
