@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(init_request request);
+our @EXPORT_OK = qw(init_request request %open_with);
 
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
 use Encode qw(encode decode);
@@ -14,6 +14,8 @@ use Porcelain::Crypto;
 use Porcelain::CursesUI;	# for displaying status updates and prompts
 use Porcelain::Nav;
 use Porcelain::Porcelain;
+
+our %open_with;
 
 my @supported_protocols = ("gemini", "file", "about");
 my $host_cert;
@@ -146,11 +148,11 @@ sub request {	# first line to process all requests for an address. params: addre
 		if ($render_format ne "unsupported") {
 			@content = readtext $addr;
 		} else {
-			if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
-				system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
+			if (defined $open_with{$mime}) {		# TODO: use a local sub instead of open_with
+				system("$open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
 				return "about:new";
-			} elsif (defined $Porcelain::Main::open_with{fileext($addr)}) {
-				system("$Porcelain::Main::open_with{fileext($addr)} $addr");
+			} elsif (defined $open_with{fileext($addr)}) {
+				system("$open_with{fileext($addr)} $addr");
 				return "about:new";
 			} else {
 				# failed to open; set error page
@@ -208,11 +210,11 @@ sub request {	# first line to process all requests for an address. params: addre
 			$render_format = parse_mime_ext($mime, $addr);	# TODO: deal with language etc in $meta
 			# TODO: allow custom openers for text/gemini or text/plain?
 			if ($render_format eq "unsupported") {
-				if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
-					system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
+				if (defined $open_with{$mime}) {		# TODO: use a local sub instead of open_with
+					system("$open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
 					return "about:new";
-				} elsif (defined $Porcelain::Main::open_with{fileext($addr)}) {
-					system("$Porcelain::Main::open_with{fileext($addr)} $addr");
+				} elsif (defined $open_with{fileext($addr)}) {
+					system("$open_with{fileext($addr)} $addr");
 					return "about:new";
 				} else {
 					# failed to open; set error page
@@ -266,8 +268,8 @@ sub request {	# first line to process all requests for an address. params: addre
 	} elsif ($conn eq "unsupported") {
 		# check if handler registered; if so, invoke handler
 		my $protocol = (split ":", $addr)[0];
-		if (defined $Porcelain::Main::open_with{$protocol}) {
-			system("$Porcelain::Main::open_with{$protocol} $addr");
+		if (defined $open_with{$protocol}) {
+			system("$open_with{$protocol} $addr");
 			return "about:new";
 		} else {
 			return "about:error";
@@ -278,11 +280,11 @@ sub request {	# first line to process all requests for an address. params: addre
 
 	### Handle unsupported render_format ###
 	if ($render_format eq "unsupported") {
-		if (defined $Porcelain::Main::open_with{$mime}) {		# TODO: use a local sub instead of Porcelain::Main::open_with
-			system("$Porcelain::Main::open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
+		if (defined $open_with{$mime}) {		# TODO: use a local sub instead of open_with
+			system("$open_with{$mime} $addr");	# TODO: make nonblocking; may need "use threads" https://perldoc.perl.org/threads
 			return "about:new";
-		} elsif (defined $Porcelain::Main::open_with{fileext($addr)}) {
-			system("$Porcelain::Main::open_with{fileext($addr)} $addr");
+		} elsif (defined $open_with{fileext($addr)}) {
+			system("$open_with{fileext($addr)} $addr");
 			return "about:new";
 		} else {
 			# failed to open; set error page

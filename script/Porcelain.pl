@@ -31,11 +31,11 @@ use Getopt::Long qw(:config bundling require_order );
 use Pod::Usage;
 use Porcelain::Crypto;	# for $idents_dir
 use Porcelain::CursesUI;	# TODO: really needed in Porcelain::Main ??
-use Porcelain::Format;	# TODO: really needed in Porcelain::Main ??
-use Porcelain::Nav;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::Format;		# TODO: really needed in Porcelain::Main ??
+use Porcelain::Nav;		# TODO: really needed in Porcelain::Main ??
 use Porcelain::Porcelain;	# TODO: really needed in Porcelain::Main ??
 use Porcelain::RandomArt;	# TODO: really needed in Porcelain::Main ??
-use Porcelain::RequestHandler;
+use Porcelain::RequestHandler qw(init_request request %open_with);
 
 use open ':encoding(UTF-8)';
 
@@ -43,7 +43,6 @@ use open ':encoding(UTF-8)';
 my $rq_addr;		# address of the request (URI, IRI, local, internal)
 my @stdin;		# only used if pipe/STDIN are used
 my ($vol, $dir, $fil);	# for local file location
-our %open_with;
 our @searchlns;		# lines with matches for search 
 
 my $redirect_count = 0;
