@@ -17,7 +17,7 @@ my $r;	# holds return value short-term
 sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $displayrows, $render_length --> new $viewfrom
 	my ($sequence, $fromln, $rows, $render_length) = @_; 
 	if (scalar(@$sequence) < 1) {
-		Porcelain::CursesUI::c_prompt_ch "No matches.";
+		c_prompt_ch "No matches.";
 		return undef;
 	} else {
 		my $centerline = $fromln + int(($rows + 1) / 2);
@@ -78,7 +78,7 @@ sub page_nav {
 			my $linesfrom = $viewfrom + 1;
 			my $linesto = $viewto + 1;
 			my $linespercent = int($linesto / $render_length * 100);
-			Porcelain::CursesUI::c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
+			c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
 			$update_viewport = 1;
 		} elsif ($c eq 'I') {	# advanced info
 			# 7: out-of-band verification
@@ -102,7 +102,7 @@ sub page_nav {
 			push @info, "\t\t\tSignature Algorithm:\t" . $Porcelain::Main::host_cert->sig_alg_name();
 			push @info, "\t\t\tPublic Key Algorithm:\t" . $Porcelain::Main::host_cert->key_alg_name();
 			if ($Porcelain::Main::host_cert->is_selfsigned()) {
-				push @info, "\t\t\tSelf-signed?\t\tYes"; } else { push @info, "\t\t\tSelf-signed?:\t\tNo"; } push @info, "\n\n" . randomart(lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = Porcelain::CursesUI::c_fullscr join("\n", @info), "Info";
+				push @info, "\t\t\tSelf-signed?\t\tYes"; } else { push @info, "\t\t\tSelf-signed?:\t\tNo"; } push @info, "\n\n" . randomart(lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
 			delwin($infowin);
@@ -127,7 +127,7 @@ sub page_nav {
 			# ask for SHA-256, manual confirmation, or URL
 			undef $r;
 			until ($r) {
-				$r = Porcelain::CursesUI::c_pad_str "Enter SHA-256, URL (for third-party verification), or [M] for manual mode: ";
+				$r = c_pad_str "Enter SHA-256, URL (for third-party verification), or [M] for manual mode: ";
 			}
 			chomp $r;
 			$r = lc $r;
@@ -147,9 +147,9 @@ sub page_nav {
 				# TODO: store the $sha256 (from $Porcelain::Main::host_cert) in known_hosts
 			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
 				if ($r eq lc($Porcelain::Main::host_cert->fingerprint_sha256() =~ tr/://dr)) {
-					Porcelain::CursesUI::clean_exit "SHA-256 match";
+					clean_exit "SHA-256 match";
 				} else {
-					Porcelain::CursesUI::clean_exit "SHA-256 mismatch";
+					clean_exit "SHA-256 mismatch";
 				}
 				# TODO:
 				#	If it matches, should turn green (or stay green).
@@ -160,9 +160,9 @@ sub page_nav {
 				#	otherwise, remove entry; staying yellow
 			} elsif (not $r =~ /\s/) {		# URL	# TODO: refine?
 				# TODO: implement fetching an SHA-256, pubkey (other?)
-				Porcelain::CursesUI::clean_exit "Third-party OOB verification not yet implemented; URL provided: $r";
+				clean_exit "Third-party OOB verification not yet implemented; URL provided: $r";
 			} else {
-				Porcelain::CursesUI::clean_exit "Invalid response: $r";
+				clean_exit "Invalid response: $r";
 			}
 			# TODO: implement creating the record and storing it
 		} elsif ($c eq "]") {	# 'next' gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
@@ -229,13 +229,13 @@ sub page_nav {
 			$update_viewport = 1;
 		} elsif ($c eq 'o') {
 			push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;	# save last address to back_history
-			$Porcelain::Main::rq_addr = Porcelain::CursesUI::c_prompt_str("open: ");	# not allowing relative links
+			$Porcelain::Main::rq_addr = c_prompt_str("open: ");	# not allowing relative links
 			if (not $Porcelain::Main::rq_addr =~ m{:}) {
 				$Porcelain::Main::rq_addr = "gemini://" . $Porcelain::Main::rq_addr;
 			}
 			return;
 		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
-			my $s = Porcelain::CursesUI::c_prompt_str(": ");
+			my $s = c_prompt_str(": ");
 			# 'up'/'..'
 			# 'root'/'/'
 			# 'next', 'previous'
@@ -243,9 +243,9 @@ sub page_nav {
 			addstr(0, 0, "You typed: " . $s);
 			getch;
 			$update_viewport = 1;
-			Porcelain::CursesUI::clean_exit;
+			clean_exit;
 		} elsif ($c eq '/') {
-			$Porcelain::Main::searchstr = Porcelain::CursesUI::c_prompt_str("search: ");
+			$Porcelain::Main::searchstr = c_prompt_str("search: ");
 			@Porcelain::Main::searchlns = grep { $formatted[$_] =~ /$Porcelain::Main::searchstr/i } 0..$#formatted;
 			my $viewfrom_new = next_match \@Porcelain::Main::searchlns, $viewfrom, $displayrows, $render_length;
 			if (defined $viewfrom_new) {
@@ -253,13 +253,13 @@ sub page_nav {
 			}
 			$update_viewport = 1;
 		} elsif ( $c =~ /\d/ ) {
-			Porcelain::CursesUI::c_statusline "open link: $c - " . $Porcelain::Main::links[$c-1];
+			c_statusline "open link: $c - " . $Porcelain::Main::links[$c-1];
 			if (scalar(@Porcelain::Main::links) >= 10) {
 				timeout(500);
 				my $keypress = getch;
 				if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {	# ignore non-digit input
 					$c .= $keypress;
-					Porcelain::CursesUI::c_statusline "open link: $c - " . $Porcelain::Main::links[$c-1];
+					c_statusline "open link: $c - " . $Porcelain::Main::links[$c-1];
 					if (scalar(@Porcelain::Main::links) >= 100) {	# supports up to 999 links in a page
 						undef $keypress;
 						my $keypress = getch;
@@ -272,12 +272,12 @@ sub page_nav {
 			}
 			unless ($c <= scalar(@Porcelain::Main::links)) {
 				delwin($status_win);
-				Porcelain::CursesUI::c_err "link number outside of range of current page: $c";
+				c_err "link number outside of range of current page: $c";
 				return;
 			}
 			$Porcelain::Main::chosen_link = $c-1;
 			@Porcelain::Main::last_links = @Porcelain::Main::links;	# TODO: last links needs to store absolute links, or use last rq_addr from history
-			Porcelain::CursesUI::c_statusline "open link: $c - " . $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
+			c_statusline "open link: $c - " . $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
 			push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;	# save last rq_addr to back_history
 			foreach (@Porcelain::Main::last_links) {
 				$_ = Porcelain::Main::url2absolute($Porcelain::Main::rq_addr, $_);

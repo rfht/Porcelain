@@ -13,7 +13,7 @@ our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str
 
 use Curses;
 use Encode qw(encode);
-use List::Util qw(min max);
+use List::Util qw(max);
 use Porcelain::Format;
 use Porcelain::Porcelain;
 
@@ -40,7 +40,7 @@ sub c_fullscr {		# Curses fullscreen display; DOESN'T SCROLL! (TODO) --> return 
 	if (defined $_[1]) {
 		attrset($fullscr, COLOR_PAIR(2));
 		attron($fullscr, A_BOLD);
-		addstr($fullscr, Porcelain::Main::center_text($_[1]));
+		addstr($fullscr, center_text($_[1]));
 		attroff($fullscr, A_BOLD);
 		getyx($fullscr, my $y, my $x);
 		move($fullscr, $y + 2, 0);
@@ -244,9 +244,9 @@ sub render {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted t
 				$li_num = int($li_num - 1);	# zero based
 				if (uri_class(${$links}[$li_num]) eq 'gemini' || uri_class(${$links}[$li_num]) eq 'relative' || uri_class(${$links}[$li_num]) eq 'root') {
 					attrset($main_win, COLOR_PAIR(5));	# cyan on black
-				} elsif (Porcelain::Main::uri_class(${$links}[$li_num]) eq 'gopher') {
+				} elsif (uri_class(${$links}[$li_num]) eq 'gopher') {
 					attrset($main_win, COLOR_PAIR(6));	# magenta on black
-				} elsif (substr(Porcelain::Main::uri_class(${$links}[$li_num]), 0, 4) eq 'http') {
+				} elsif (substr(uri_class(${$links}[$li_num]), 0, 4) eq 'http') {
 					attrset($main_win, COLOR_PAIR(1));	# yellow on black
 				} else {	# not sure what this is linking to
 					attrset($main_win, COLOR_PAIR(2));
