@@ -22,6 +22,7 @@ my @back_history;
 my @forward_history;
 
 my $searchstr = '';	# search string
+my @searchlns;		# lines that match searchstr
 
 my $r;	# holds return value short-term
 
@@ -213,7 +214,7 @@ sub page_nav {
 				$viewfrom = $render_length - $displayrows - 1;
 			}
 		} elsif ($c eq 'n') {
-			my $viewfrom_new = next_match \@Porcelain::Main::searchlns, $viewfrom, $displayrows, $render_length;
+			my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
 			if (defined $viewfrom_new) {
 				$viewfrom = $viewfrom_new;
 			}
@@ -237,8 +238,8 @@ sub page_nav {
 			clean_exit;
 		} elsif ($c eq '/') {
 			$searchstr = c_prompt_str("search: ");
-			@Porcelain::Main::searchlns = grep { $formatted[$_] =~ /$searchstr/i } 0..$#formatted;
-			my $viewfrom_new = next_match \@Porcelain::Main::searchlns, $viewfrom, $displayrows, $render_length;
+			@searchlns = grep { $formatted[$_] =~ /$searchstr/i } 0..$#formatted;
+			my $viewfrom_new = next_match \@searchlns, $viewfrom, $displayrows, $render_length;
 			if (defined $viewfrom_new) {
 				$viewfrom = $viewfrom_new;
 			}
