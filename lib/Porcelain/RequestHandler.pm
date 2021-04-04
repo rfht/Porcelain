@@ -18,7 +18,7 @@ use Porcelain::Porcelain;
 my @supported_protocols = ("gemini", "file", "about");
 my $host_cert;
 my $redirect_count = 0;
-my $max_redirect = 5;	# TODO: allow custom value in config
+use constant MAX_REDIRECT => 5;	# TODO: allow custom value in config
 my $valcert;		# state of certificate validation. 3: verified; 2: TOFU; 1: new; 0: mismatch
 my $valdate;
 
@@ -218,7 +218,7 @@ sub request {	# first line to process all requests for an address. params: addre
 				}
 			}
 		} elsif ($shortstatus == 3) {
-			die "ERROR: too many redirects" if ++$redirect_count > $max_redirect;
+			die "ERROR: too many redirects" if ++$redirect_count > MAX_REDIRECT;
 			# TODO: add config option to require confirmation for all redirects
 			my $redir_addr = url2absolute("gemini://" . $addr, $meta);
 			die "ERROR: cross-protocol redirects not allowed" if not $redir_addr =~ m{^gemini://};
