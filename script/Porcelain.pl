@@ -130,14 +130,6 @@ my %text_stores = (
 );
 our $hosts_file = $porcelain_dir . "/known_hosts";	# obsolete; still used in Crypto.pm.
 
-# known_hosts entries
-my $kh_domain;		# domain in known_hosts
-my $kh_algo;		# hash algorithm of known_hosts entry (e.g. SHA-256)
-our $kh_serv_hash;	# hash of the known server pubkey
-our $kh_oob_hash;	# hash from out-of-band source
-my $kh_oob_source;	# source of out-of-band hash
-our $kh_oob_date;	# date of last out-of-band update
-
 $SIG{INT} = \&caught_sigint;
 
 ### Subs ###

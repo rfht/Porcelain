@@ -102,48 +102,6 @@ sub validate_cert {	# params: certificate, domainname, known_hosts array
 	}
 }
 
-# TODO: remove sub old_validate_cert
-sub old_validate_cert {	# certificate, domainname --> undef: ok, <any string>: ERROR (message in string)
-	# TODO: add optional notBefore/notAfter checks
-	# TODO: allow temporarily accepting new/changed certificates?
-	my ($x509, $domainname) = @_;
-	foreach (@Porcelain::Main::known_hosts) {
-		my $this_host = $_;
-		if (substr($this_host, 0, length($domainname)) eq $domainname) {
-			($Porcelain::Main::kh_domain, $Porcelain::Main::kh_algo, $Porcelain::Main::kh_serv_hash, $Porcelain::Main::kh_oob_hash, $Porcelain::Main::kh_oob_source, $Porcelain::Main::kh_oob_date) = split " ", $this_host;
-			last;
-		}
-	}
-	if ($Porcelain::Main::kh_serv_hash) {
-		# cert is known, does cert still match (TOFU)?
-		if ($Porcelain::Main::kh_algo eq "sha256") {
-			if (lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr) eq $Porcelain::Main::kh_serv_hash) {
-				return undef;
-			} else {
-				return "fingerprint mismatch";
-			}
-		}
-		return "unsupported fingerprint algorithm: $Porcelain::Main::kh_algo";
-	}
-	# TODO: allow config setting to automatically accept unknown hosts without prompt
-	do {
-		$r = c_warn "Unknown host: $domainname. [S]ave to known_hosts and continue, or [A]bort?";
-	} until ($r =~ /^[SsAa]$/);
-	return "Unknown host: $domainname, user aborted" if (lc($r) eq 'a');
-	# New Host. add to @known_hosts and write to $hosts_file
-	($Porcelain::Main::kh_domain, $Porcelain::Main::kh_algo, $Porcelain::Main::kh_serv_hash) = ($domainname, $default_fp_algo, lc(Net::SSLeay::X509_get_fingerprint($x509, $default_fp_algo) =~ tr/://dr));
-	open (my $fh, '>>', $Porcelain::Main::hosts_file) or die "Could not open file $Porcelain::Main::hosts_file";
-	if ($default_fp_algo eq "sha256") {
-		my $kh_line = $Porcelain::Main::kh_domain . ' ' . $Porcelain::Main::kh_algo . ' ' . $Porcelain::Main::kh_serv_hash;
-		push @Porcelain::Main::known_hosts, $kh_line;
-		$fh->print($kh_line . "\n");
-		close $fh;
-		return undef;
-	}
-	close $fh;
-	return "unsupported fingerprint algorithm: $default_fp_algo";
-}
-
 # see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm
 sub sslcat_porcelain { # address, port, message, $crt, $key --> reply / (reply,errs,cert)
 	my ($dest_serv, $port, $out_message, $crt_path, $key_path) = @_;
