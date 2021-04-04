@@ -21,6 +21,9 @@ our $main_win;
 our $title_win;
 our $status_win;
 
+use constant MAX_VROWS => 1024 * 1024;	# max virtual rows used in curses pads
+use constant MAX_VCOLS => 1024;		# maximum virtual columns used in curses pads
+
 sub clean_exit {
 	delwin($main_win);
 	delwin($title_win);
@@ -61,7 +64,7 @@ sub c_prompt_str {	# Curses prompt for string: prompt string --> user string
 
 sub c_pad_str {	# PADDED Curses prompt for string: prompt string --> user string
 	# TODO: allow backspace etc
-	my $prompt_pad = newpad(1, $Porcelain::Main::max_vcols);
+	my $prompt_pad = newpad(1, MAX_VCOLS);
 	bkgd($prompt_pad, COLOR_PAIR(2) | A_REVERSE);
 	addstr($prompt_pad, $_[0]);
 	prefresh($prompt_pad, 0, 0, $LINES - 1, 0, $LINES - 1, $COLS - 1);

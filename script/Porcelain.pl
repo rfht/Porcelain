@@ -63,6 +63,7 @@
 # - implement '.' to see raw page (like Elpher, apparently; see https://www.youtube.com/watch?v=Dy4IWoGbm6g)
 # - implement Tab key to select links in page
 # - clean up module usage between script and Porcelain modules
+# - use constant pragma or p5-Readonly{,-XS} to harden certain variables like %open_with
 
 use strict;
 use warnings;
@@ -102,9 +103,6 @@ our @last_links;		# array list from last page, for next/previous (see gemini://g
 our $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 our $searchstr = '';		# search string
 our @searchlns;		# lines with matches for search 
-my $r;		# responses to prompts
-our $max_vrows = 1024 * 1024;	# max virtual rows used in curses pads
-our $max_vcols = 1024;	# maximum virtual columns used in curses pads
 
 my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
