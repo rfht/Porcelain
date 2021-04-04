@@ -29,7 +29,7 @@ use Cwd qw(abs_path);
 use File::Spec;			# for splitpath, canonpath
 use Getopt::Long qw(:config bundling require_order );
 use Pod::Usage;
-use Porcelain::Crypto;	# TODO: really needed in Porcelain::Main ??
+use Porcelain::Crypto;	# for $idents_dir
 use Porcelain::CursesUI;	# TODO: really needed in Porcelain::Main ??
 use Porcelain::Format;	# TODO: really needed in Porcelain::Main ??
 use Porcelain::Nav;	# TODO: really needed in Porcelain::Main ??
@@ -57,7 +57,7 @@ my $redirect_count = 0;
 my $redirect_max = 5;	# TODO: allow setting this in the config
 
 my $porcelain_dir = $ENV{'HOME'} . "/.porcelain";
-our $idents_dir = $porcelain_dir . "/idents";
+$idents_dir = $porcelain_dir . "/idents";	# from Porcelain::Crypto
 
 my $podfile = "$FindBin::Bin/../pod/Porcelain.pod";
 

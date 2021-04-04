@@ -5,7 +5,10 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(gen_client_cert gen_identity gen_privkey init_crypto store_cert store_privkey validate_cert sslcat_porcelain);
+our @EXPORT = qw(gen_client_cert gen_identity gen_privkey init_crypto
+		store_cert store_privkey validate_cert sslcat_porcelain
+		$idents_dir
+);
 
 use Net::SSLeay;
 use Porcelain::CursesUI;	# for c_warn
@@ -13,8 +16,11 @@ use Porcelain::CursesUI;	# for c_warn
 use constant DEFAULT_FP_ALGO => "sha256";
 use constant DEFAULT_RSA_BITS => 2048;
 use constant RSA_EXPONENT => 65537;
+# TODO: allow setting/modifying $fp_algo, $rsa_bits
 my $fp_algo;
 my $rsa_bits;
+
+our $idents_dir;
 
 my $r;		# hold short-term return values
 
@@ -61,8 +67,8 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 	my $pkey = gen_privkey;
 	my $x509 = gen_client_cert($days, $pkey);
 	my $sha = lc(Net::SSLeay::X509_get_fingerprint($x509, $fp_algo || DEFAULT_FP_ALGO) =~ tr/://dr);
-	my $key_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".key";
-	my $crt_out_file = $Porcelain::Main::idents_dir . "/" . $sha . ".crt";
+	my $key_out_file = $idents_dir . "/" . $sha . ".key";
+	my $crt_out_file = $idents_dir . "/" . $sha . ".crt";
 	store_privkey $pkey, $key_out_file;
 	store_cert $x509, $crt_out_file;
 	return $sha;
