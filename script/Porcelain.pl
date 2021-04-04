@@ -16,17 +16,12 @@
 
 # TODO:
 # - add Copyright/license to modules
-# - look up pledge and unveil examples and best practices
-# - keep testing with gemini://gemini.conman.org/test/torture/
-# - search "TODO" in comments
-# - import perl modules in mystuff/misc to ports
-# - check number of terminal columns and warn if too few (< 80) ?
 # - limit size of history; can be configurable in whatever config approach is later chosen
-# - implement a hotkey to view history
 # - implement subscribed option
 # - allow theming (colors etc) via a config file?
 # - see if some Perl modules may not be needed
 # - review error handling - may not always need 'die'. Create a way to display warnings uniformly?
+# - replace all uses of die with clean_die (?)
 # - add option for "Content Warning" type use of preformatted text and alt text:
 #	https://dragonscave.space/@devinprater/105782591455644854
 # - implement logging messages, warnings, errors to file
@@ -34,48 +29,34 @@
 # - implement 'N' to search backwards
 # - implement '|' to pipe to external programs (like espeak)
 # - update README, ideally as output from pod2usage
-# - move documentation into porcelain.pod?
 # - pledge after reading config; can get rid of rpath?? see https://marc.info/?l=openbsd-ports&m=161417431131260&w=2
 # - remove non-printable terminal control characters; see https://lists.orbitalfox.eu/archives/gemini/2020/000390.html
 # - implement TOFU recommendations:gemini://drewdevault.com/2020/09/21/Gemini-TOFU.gmi - PARTIALLY; NEED TEMP PERMISSIONS
 # - fix supporting MIME text/plain: query: gemini://gemini.thebackupbox.net/IRIcheck
-# - refactor sub validate_cert
-# - implement client certs (for 6x codes)
-# - add option to view raw text/gemini (or other?) file
+# - gemini://gemini.thebackupbox.net/IRIcheck: strip non-printable characters from $meta - displays: ": bmit something and I'll tell you if it is an IRI."
 # - fix newline in SYNOPSIS to separate different syntax
 # - fix $reflow_text, $update_viewport mechanics in sub page_nav to keep viewport at stable position
 #   (currently viewport moves down when increasing COLs, and up when decreasing)
 # - add timeout to loading resources
 # - ?add test suite?
-# - when new certificate received, present fingerprint, potentially graphically, to the user for verification
 # - add config option to mandate TLS >= 1.3
 #   see specification (as of 2021-03-09): "Clients who wish to be "ahead of the curve MAY refuse to connect to servers using TLS version 1.2 or lower."
 #   => test then what domains break
-# - replace all uses of die with clean_die (?)
-# - make it possible to use ':port' in URL like with gemini://rawtext.club:1965/~sloum/spacewalk.gmi
-# - get OpenSSL version string with: print (Net::SSLeay::SSLeay_version() . "\n");
 # - store protocol version with my $rv = Net::SSLeay::get_version($ssl); => can use to check TLSv1.3
 # - fix underscore in front of link, header , see gemini://astrobotany.mozz.us
 #	gemini://palm93.com/2021-03-07_Midgard.gmi 
 # - implement geminispace search, like 's' in gemini://gmn.clttr.info/cgmnlm.gmi ?
 # - c_prompt_str - enable backspace, arrow key navigation, cursor?
 # - use newpad with $max_vrows and $max_vcols rather than simple window for the display
-# - make sure not suring getstr, inchstr, instr because of potential for buffer overflow attacks; see https://metacpan.org/pod/Curses
+# - make sure not using getstr, inchstr, instr because of potential for buffer overflow attacks; see https://metacpan.org/pod/Curses
 # - make sure to escape dots and other RE chars in all uses of grep
-# - investigate segfaults, e.g. 61		   start = win->_line[y].text; in wclear, when leaving Info page
-# - turn the lower-case SHA-256 without ':' into a sub
-# - implement caching of webpages
 # - add the server response header (e.g. "20 text/gemini; lang=en-US;charset=utf-8") to Info page
 # - other page to test with temporary certs: gemini://bestiya.duckdns.org/
 # - check why cert mismatch with gemini://skyjake.fi/lagrange/ when following link from other domain (hyperborea.org)
-# - add a print option (to a printer, e.g. via lpr)
 # - add IRI support (see mailing list)
 # - implement a way to preview links before following them
 # - fix glitch of line continuation showing the internal leading characters e.g. gemini://thfr.info/gemini/modified-trust-verify.gmi list items when scrolling past initial line
-# - fix opening files like *.png
 # - remove need for rpath from sslcat_porcelain by preloading whatever is needed?
-# - implement fork+exec
-# - use sub lines more consistently
 # - check POD documentation with podchecker(1)
 # - go through '$ perldoc perlpodstyle'
 # - enable --conf/-c config file support; see GetOptions
