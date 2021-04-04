@@ -5,7 +5,9 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(gen_client_cert gen_identity gen_privkey store_cert store_privkey validate_cert sslcat_porcelain);
+our @EXPORT = qw(gen_client_cert gen_identity gen_privkey init_crypto store_cert store_privkey validate_cert sslcat_porcelain);
+
+use Net::SSLeay;
 
 use subs qw(c_warn);
 
@@ -66,6 +68,10 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 	store_privkey $pkey, $key_out_file;
 	store_cert $x509, $crt_out_file;
 	return $sha;
+}
+
+sub init_crypto {
+	Net::SSLeay::initialize();
 }
 
 sub validate_cert {	# params: certificate, domainname, known_hosts array

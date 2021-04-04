@@ -76,10 +76,8 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use Cwd qw(abs_path);
-use DateTime;			# TODO: used here? needed?
-use File::Spec;			# TODO: what is this used for?
-use Getopt::Long qw(:config bundling require_order );	# TODO: all of those needed?
-use Net::SSLeay;
+use File::Spec;			# for splitpath, canonpath
+use Getopt::Long qw(:config bundling require_order );
 use Pod::Usage;
 use Porcelain::Crypto;	# TODO: really needed in Porcelain::Main ??
 use Porcelain::CursesUI;	# TODO: really needed in Porcelain::Main ??
@@ -212,9 +210,9 @@ if (not defined $file_in) {		# most common case - no local file passed
 	}
 }
 
-### Init: SSLeay, Curses, about pages ###
-Net::SSLeay::initialize();	# initialize ssl library once
+### Inits ###
 init_cursesui unless $opt_dump;
+init_crypto;
 
 # Make pod2usage text usable in about:pod/about:man
 open my $fh, '>', \my $text;
