@@ -12,8 +12,6 @@ use List::Util qw(min max);
 use Porcelain::CursesUI;
 use Porcelain::Format;
 
-use subs qw(Porcelain::Main::open_about);
-
 my $r;	# holds return value short-term
 
 sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $displayrows, $render_length --> new $viewfrom
@@ -47,8 +45,8 @@ sub page_nav {
 	my $update_viewport;
 	my $reflow_text = 1;
 	while (1) {
-		if (defined $Porcelain::Main::status_win) {
-			delwin($Porcelain::Main::status_win);
+		if (defined $status_win) {
+			delwin($status_win);
 		}
 
 		if ($reflow_text) {
@@ -74,7 +72,7 @@ sub page_nav {
 		$c = '' if not defined $c;
 		$fn = 0x0 if not defined $fn;	# TODO: double-check that this doesn't conflict with any KEY_*
 		if ($c eq 'H') {	# show history
-			#Porcelain::Main::open_about "about:history";
+			# TODO: implement
 			return;
 		} elsif ($c eq 'i') {	# basic info (position in document, etc.	# TODO: expand, e.g. URL
 			my $linesfrom = $viewfrom + 1;
@@ -273,7 +271,7 @@ sub page_nav {
 				timeout(-1);
 			}
 			unless ($c <= scalar(@Porcelain::Main::links)) {
-				delwin($Porcelain::Main::status_win);
+				delwin($status_win);
 				Porcelain::CursesUI::c_err "link number outside of range of current page: $c";
 				return;
 			}

@@ -75,11 +75,8 @@ $main::VERSION = "0.1-alpha";	# used by Getopt::Long auto_version
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 
-use Any::URI::Escape;		# to handle percent encoding (uri_escape())
-use Curses;
 use Cwd qw(abs_path);
-use DateTime;
-use Encode qw(encode decode);
+use DateTime;			# TODO: used here? needed?
 use File::Spec;			# TODO: what is this used for?
 use Getopt::Long qw(:config bundling require_order );	# TODO: all of those needed?
 use Net::SSLeay;
@@ -105,9 +102,6 @@ our %open_with;
 our @links;		# array containing links in the pages
 our @last_links;		# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 our $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
-our $win;
-our $title_win;
-our $status_win;
 our $searchstr = '';		# search string
 our @searchlns;		# lines with matches for search 
 my $r;		# responses to prompts
@@ -220,26 +214,7 @@ if (not defined $file_in) {		# most common case - no local file passed
 
 ### Init: SSLeay, Curses, about pages ###
 Net::SSLeay::initialize();	# initialize ssl library once
-
-if (not $opt_dump) {
-	initscr;
-	start_color;	# TODO: check if (has_colors)
-	$title_win = newwin(1, 0, 0, 0);
-	$win = newwin(0,0,1,0);
-	refresh;
-	noecho;
-	nonl;
-	cbreak;
-	keypad(1);
-	curs_set(0);
-	init_pair(1, COLOR_YELLOW, COLOR_BLACK);
-	init_pair(2, COLOR_WHITE, COLOR_BLACK);
-	init_pair(3, COLOR_BLUE, COLOR_BLACK);
-	init_pair(4, COLOR_GREEN, COLOR_BLACK);
-	init_pair(5, COLOR_CYAN, COLOR_BLACK);
-	init_pair(6, COLOR_MAGENTA, COLOR_BLACK);
-	init_pair(7, COLOR_RED, COLOR_WHITE);
-}
+init_cursesui unless $opt_dump;
 
 # Make pod2usage text usable in about:pod/about:man
 open my $fh, '>', \my $text;
