@@ -6,7 +6,8 @@ use warnings;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str
-		c_statusline c_title_win c_warn clean_exit hlsearch
+		c_statusline c_title_win c_warn caught_sigint clean_exit
+		downloader hlsearch
 		init_cursesui render $main_win $status_win $title_win
 );
 
@@ -152,6 +153,23 @@ sub c_err {	# Curses error: prompt char, can be any key --> user char
 	noecho;
 	delwin($prompt_win);
 	return $c;
+}
+
+sub caught_sigint {
+	clean_exit "Caught SIGINT - aborting...";
+}
+
+sub downloader {	# $url, $body --> 0: success, >0: failure
+	# TODO: add timeout; progress bar
+	my ($dlurl, $dlcont) = @_;
+	my $dl_file = $dlurl =~ s|^.*/||r;
+	$dl_file = $ENV{'HOME'} . "/Downloads/" . $dl_file;
+	c_prompt_ch "Downloading $dlurl ...";
+	open my $fh, '>:raw', $dl_file or clean_exit "error opening $dl_file for writing";
+	binmode($fh);
+	print $fh $dlcont or clean_exit "error writing to file $dl_file";
+	close $fh;
+	return 0;
 }
 
 sub hlsearch {	# highlight search match

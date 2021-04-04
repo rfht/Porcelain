@@ -5,28 +5,9 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(caught_sigint downloader lines readconf readtext sep uri_class);
+our @EXPORT = qw(lines readconf readtext sep uri_class);
 
 use Porcelain::CursesUI;	# TODO: address endless include loop
-
-use subs qw(clean_exit c_prompt_ch);
-
-sub caught_sigint {
-	clean_exit "Caught SIGINT - aborting...";
-}
-
-sub downloader {	# $url, $body --> 0: success, >0: failure
-	# TODO: add timeout; progress bar
-	my ($dlurl, $dlcont) = @_;
-	my $dl_file = $dlurl =~ s|^.*/||r;
-	$dl_file = $ENV{'HOME'} . "/Downloads/" . $dl_file;
-	c_prompt_ch "Downloading $dlurl ...";
-	open my $fh, '>:raw', $dl_file or clean_exit "error opening $dl_file for writing";
-	binmode($fh);
-	print $fh $dlcont or clean_exit "error writing to file $dl_file";
-	close $fh;
-	return 0;
-}
 
 sub lines {	# multi-line text scalar --> $first_line / @lines
 	my @lines = (split /\n/, $_[0]);
