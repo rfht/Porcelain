@@ -171,7 +171,7 @@ GetOptions (
 		"version|v"	=> sub { Getopt::Long::VersionMessage() },
 );
 
-### Set up and read config, known_hosts, bookmarks, history ###
+### Set up and read config, known_hosts, bookmarks, history, open_with ###
 if (! -d $porcelain_dir) {
 	mkdir $porcelain_dir || die "Unable to create $porcelain_dir";
 }
@@ -185,6 +185,10 @@ foreach (keys %text_stores) {
 	if (-f $store_file) {
 		@{$text_stores{$store_key}} = readtext $store_file;
 	}
+}
+
+if (-f $porcelain_dir . '/open.conf') {
+	%open_with = readconf($porcelain_dir . '/open.conf');
 }
 
 ### Determine Starting Address ###
@@ -235,9 +239,6 @@ if ($opt_unveil) {
 	unveil("/usr/local/lib/libmagic.so.5.0", "r") || die "Unable to unveil: $!";	# TODO: find the version number and make this resilient to version updates
 	unveil("/usr/local/share/misc/magic.mgc", "r") || die "Unable to unveil: $!";
 	unveil("$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
-	if (-f $porcelain_dir . '/open.conf') {
-		%open_with = readconf($porcelain_dir . '/open.conf');
-	}
 	if (defined $file_in && $file_in ne "-") {
 		unveil($dir, "r") || die "Unable to unveil: $!";
 	}
@@ -260,11 +261,9 @@ if ($opt_pledge) {
 }
 
 ### Request loop ###
-
 init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
 # TODO: empty/undef all these arrays after init_request?
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;
 }
-
 clean_exit "Bye...";
