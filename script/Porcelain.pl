@@ -62,6 +62,7 @@
 # - enable --conf/-c config file support; see GetOptions
 # - implement '.' to see raw page (like Elpher, apparently; see https://www.youtube.com/watch?v=Dy4IWoGbm6g)
 # - implement Tab key to select links in page
+# - clean up module usage between script and Porcelain modules
 
 use strict;
 use warnings;
@@ -75,14 +76,12 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use Any::URI::Escape;		# to handle percent encoding (uri_escape())
-use Crypt::OpenSSL::X509;
 use Curses;
 use Cwd qw(abs_path);
 use DateTime;
 use Encode qw(encode decode);
-use File::Spec;
-use Getopt::Long qw(:config bundling require_order ); #auto_version auto_help);	# TODO: all of those needed?
-use List::Util qw(min max);
+use File::Spec;			# TODO: what is this used for?
+use Getopt::Long qw(:config bundling require_order );	# TODO: all of those needed?
 use Net::SSLeay;
 use Pod::Usage;
 use Porcelain::Crypto;	# TODO: really needed in Porcelain::Main ??
@@ -94,7 +93,6 @@ use Porcelain::RandomArt;	# TODO: really needed in Porcelain::Main ??
 use Porcelain::RequestHandler;
 
 use open ':encoding(UTF-8)';
-use subs qw(open_about);
 
 ### Variables ###
 my $rq_addr;		# address of the request (URI, IRI, local, internal)
@@ -154,231 +152,6 @@ sub gem_host {
 	my $out = substr $input, 9;	# remove leading 'gemini://'
 	$out =~ s|/.*||;
 	return $out;
-}
-
-sub open_about {	# resource, e.g. 'about:history'
-	my $about_page = substr $_[0], 6;	# remove leading 'about:'
-	my @about_cont;				# content for the about page
-	if ($about_page eq "history") {
-		@about_cont = @back_history;
-		unshift @about_cont, ("History", $rq_addr . " $rq_addr <-- CURRENT URL");
-	} elsif ($about_page eq "bookmarks") {
-	} elsif ($about_page eq "subscriptions") {
-	} else {
-		die "Invalid about address: $_[0]";
-	}
-	# TODO: move this formatting into Format.pm
-	preformat_linklist \@about_cont;
-	return page_nav \@about_cont;
-}
-
-sub open_file {		# opens a local file
-	# TODO: get file MIME type with 'file -bi' command
-	# if text/gemini, read file into variable, then render
-	my $file = $_[0];
-	my $raw_cont;
-	if (substr($file, 0, 7) eq "file://") {
-		$file = substr($file, 7);
-	}
-	open(my $fh, '<', $file) or die "cannot open $file";
-	{
-		local $/;
-		$raw_cont = <$fh>;
-	}
-	close($fh);
-	my @file_cont = split('\n', $raw_cont);
-	return page_nav \@file_cont;
-}
-
-sub open_gemini {	# url, certpath (optional), keypath (optional)
-	my ($resource, $certpath, $keypath) = @_;
-	my $domain = gem_host($resource);
-	# TODO: warn/error if $certpath but not $keypath
-
-	undef $host_cert;
-	(my $raw_response, my $err, $host_cert)= sslcat_porcelain($domain, 1965, "$resource\r\n", $certpath, $keypath);	# has to end with CRLF ('\r\n')
-	if ($err) {
-		die "error while trying to establish TLS connection";
-	}
-	if (not defined $host_cert) {
-		die "no certificate received from server";
-	}
-	# Transform $host_cert into usable format for Crypt::OpenSSL::X509
-	$host_cert = Crypt::OpenSSL::X509->new_from_string(Net::SSLeay::PEM_get_string_X509($host_cert));
-	if ($r = validate_cert($host_cert, $domain)) {
-		my $last_r = $r;
-		undef $r;
-		do {
-			$r = c_err "Error validating cert: $last_r. [C]ontinue anyway, or [A]bort?";
-		} until ($r =~ /^[CcAa]$/);
-		if ($r =~ /^[Aa]$/) {
-			clean_exit;
-		}
-	}
-
-	# TODO: enforce <META>: UTF-8 encoded, max 1024 bytes
-	my @response =	lines(decode('UTF-8', $raw_response));	# TODO: allow non-UTF8 encodings?
-	my $header =	shift @response;
-	(my $full_status, my $meta) = sep $header;	# TODO: error if $full_status is not 2 digits
-	chomp $meta;
-
-	my $status = substr $full_status, 0, 1;
-	$rq_addr =~ s/[^[:print:]]//g;
-	$meta =~ s/[^[:print:]]//g;
-	if ($status != 3) {
-		$redirect_count = 0;	# reset the $redirect_count
-	}
-	if ($status == 1) {		# 1x: INPUT
-		# TODO: 11: SENSITIVE INPUT (e.g. password entry) - don't echo
-		$r = c_prompt_str $meta . ": ";	# TODO: other separator? check if $meta includes ':' at the end?
-		$r = uri_escape $r;
-		$rq_addr = $rq_addr . "?" . $r;		# query component is separated from the path by '?'.
-		return;
-	} elsif ($status == 2) {	# 2x: SUCCESS
-		# <META>: MIME media type (apply to response body), DEFAULT TO "text/gemini; charset=utf-8"
-		# TODO: process language, encoding
-
-		# is content text/gemini or something else?
-		# TODO: support text/plain
-		if (not $meta =~ m{^text/gemini} && not $meta =~ m{^\s*$}) {
-			# check if extension in %open_with
-			my $f_ext = $rq_addr =~ s/.*\././r;
-			if (defined $open_with{$f_ext}) {	# TODO: check MIME type primarily; suffix as fallback
-				open(my $fh, '|-', "$open_with{$f_ext}") or c_warn "Error opening pipe to ogg123: $!";
-				print $fh join("\n", @response) or clean_exit "error writing to pipe";
-				close $fh;
-			} else {
-				$r = '';
-				until ($r =~ /^[YyNn]$/) {
-					$r = c_prompt_ch "Unknown MIME type in resource $rq_addr. Download? [y/n]";
-				}
-				if ($r =~ /^[Yy]$/) {
-					downloader($rq_addr, join("\n", @response)) && c_warn "Download of $rq_addr failed!";
-				}
-			}
-			if (scalar(@back_history) > 0) {
-				$rq_addr = pop @back_history;
-			} else {
-				clean_exit "unable to open $rq_addr";
-			}
-		}
-		return page_nav \@response
-	} elsif ($status == 3) {	# 3x: REDIRECT
-		# 30: TEMPORARY, 31: PERMANENT: indexers, aggregators should update to the new URL, update bookmarks
-		chomp $rq_addr;
-		$redirect_count++;
-		if ($redirect_count > $redirect_max) {
-			die "ERROR: more than maximum number of $redirect_max redirects";
-		}
-		# TODO: allow option to ask for confirmation before all redirects
-		$rq_addr = url2absolute($rq_addr, $meta);
-		if (not $rq_addr =~ m{^gemini://}) {
-			die "ERROR: cross-protocol redirects not allowed";	# TODO: instead ask for confirmation?
-		}
-		return;
-	} elsif ($status == 4) {	# 4x: TEMPORARY FAILURE
-		# TODO: implement proper error message without dying
-		# <META>: additional information about the failure. Client should display this to the user.
-		# 40: TEMPORARY FAILURE, 41: SERVER UNAVAILABLE, 42: CGI ERROR, 43: PROXY ERROR, 44: SLOW DOWN
-		do {
-			$r = c_err "4x: Temporary Failure: $meta. [B]ack, [R]etry, [O]ther URL or [Q]uit?"; # TODO: [B]ack not working
-		} until ($r =~ /^[BbRrOoQq]$/);
-		if ($r =~ /^[Oo]$/) {
-			$rq_addr = c_prompt_str("url: gemini://");	# TODO: allow relative links??
-			$rq_addr = 'gemini://' . $rq_addr;
-			return;
-		} elsif ($r =~ /^[Bb]$/) {
-			if (scalar(@back_history) > 0) {
-				$rq_addr = pop @back_history;
-				return;
-			}
-		} elsif ($r =~ /^[Qq]$/) {
-			clean_exit;
-		}
-	} elsif ($status == 5) {	# 5x: PERMANENT FAILURE
-		# TODO: implement proper error message without dying
-		# <META>: additional information, client to display this to the user
-		# 50: PERMANENT FAILURE, 51: NOT FOUND, 52: GONE, 53: PROXY REQUEST REFUSED, 59: BAD REQUEST
-		do {
-			$r = c_err "5x: Permanent Failure: $meta. [B]ack, [R]etry, [O]ther URL or [Q]uit?"; # TODO: [B]ack not working
-		} until ($r =~ /^[BbRrOoQq]$/);
-		if ($r =~ /^[Oo]$/) {
-			$rq_addr = c_prompt_str("url: gemini://");	# TODO: allow relative links??
-			$rq_addr = 'gemini://' . $rq_addr;
-			return;
-		} elsif ($r =~ /^[Bb]$/) {
-			if (scalar(@back_history) > 0) {
-				$rq_addr = pop @back_history;
-				return;
-			} else {
-				clean_exit "error invalid url: $rq_addr";
-			}
-		} elsif ($r =~ /^[Qq]$/) {
-			clean_exit;
-		}
-	} elsif ($status == 6) {	# 6x: CLIENT CERTIFICATE REQUIRED
-		# <META>: _may_ provide additional information on certificate requirements or why a cert was rejected
-		# 60: CLIENT CERTIFICATE REQUIRED, 61: CERTIFICATE NOT AUTHORIZED, 62: CERTIFICATE NOT VALID
-		c_prompt_ch $meta;
-		# check what identities exist
-		opendir my $dh, $idents_dir or die "Could not open '$idents_dir' for reading: $!\n";
-		my @ident_files = grep(/\.crt$/, readdir($dh));	# read only .crt files; each should have a matching .key
-		closedir $dh;
-		my $sha;
-		# TODO: link an identity to a resource (and all paths underneath it)
-		if (scalar(@ident_files) == 0) {
-			$r = c_prompt_ch "Identity has been requested, but none found. Create new certificate for $rq_addr? [Y/n]";
-			if ($r =~ /^[Yy]$/) {
-				$sha = gen_identity 30;	# TODO: ask for certificate lifetime
-			} else {
-				clean_exit "No certificate; aborting.";
-			}
-		} else {
-			$sha = c_prompt_str "Please enter identity to continue: ";
-		}
-		my $crt_key = $idents_dir . "/" . $sha;
-		if (-e $crt_key . ".crt" && -e $crt_key . ".key") {
-			open_gemini($rq_addr, $crt_key . ".crt", $crt_key . ".key");
-		} else {
-			c_err "Identity $r not found!";
-		}
-	} else {
-		die "Invalid status code in response";
-	}
-}
-
-sub open_custom {
-	if (defined $open_with{$_[0]}) {
-		system("$open_with{$_[0]} $_[1]");
-		$rq_addr = pop @back_history;
-	} else {
-		if ($_[0] eq 'file') {
-			open_file $rq_addr;
-		} else {
-			clean_exit "Not implemented.";
-		}
-	}
-}
-
-sub open_url {
-	# TODO: read from %open_with, open with 'gemini' protocol or other modality
-	# TODO: then determine the resource MIME type and call appropriate resource sub
-	c_statusline "Loading $rq_addr ...";
-	if (uri_class($_[0]) eq 'gemini') {
-		open_gemini $_[0];
-	} elsif (uri_class($_[0]) eq 'https' or uri_class($_[0]) eq 'http') {
-		open_custom 'html', $_[0] ;
-	} elsif (uri_class($_[0]) eq 'gopher') {
-		open_custom 'gopher', $_[0];
-	} elsif (uri_class($_[0]) eq 'file') {
-		open_custom 'file', $_[0];
-	} elsif (uri_class($_[0]) eq 'mailto') {
-		open_custom 'mailto', $_[0];
-	} elsif (uri_class($_[0]) eq 'about') {
-		open_about $_[0];		# TODO: don't log about pages in history
-	} else {
-		clean_exit "Protocol not supported.";
-	}
 }
 
 ### Process CLI Options ###
