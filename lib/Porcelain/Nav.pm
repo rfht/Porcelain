@@ -18,6 +18,9 @@ use Porcelain::Porcelain;
 my @last_links;	# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 
+my @back_history;
+my @forward_history;
+
 my $searchstr = '';	# search string
 
 my $r;	# holds return value short-term
@@ -89,10 +92,6 @@ sub page_nav {
 			c_prompt_ch "lines $linesfrom-$linesto/$render_length $linespercent%";
 			$update_viewport = 1;
 		} elsif ($c eq 'I') {	# advanced info
-			# 7: out-of-band verification
-			#	- type
-			#	- date last renewed
-			#	- time since last renewal
 			my @info = ("Domain:\t\t\t" . $domain, "Resource:\t\t" . $addr);
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
@@ -172,14 +171,14 @@ sub page_nav {
 				return $last_links[$chosen_link];
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
-			if (scalar(@Porcelain::Main::back_history) > 0) {
-				push @Porcelain::Main::forward_history, $addr;
-				return(pop @Porcelain::Main::back_history);
+			if (scalar(@back_history) > 0) {
+				push @forward_history, $addr;
+				return(pop @back_history);
 			}
 		} elsif ($c eq "\cL") {	# forward in history
-			if (scalar(@Porcelain::Main::forward_history) > 0) {
-				push @Porcelain::Main::back_history, $addr;
-				return(pop @Porcelain::Main::forward_history);
+			if (scalar(@forward_history) > 0) {
+				push @back_history, $addr;
+				return(pop @forward_history);
 			}
 		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
 			$reflow_text = 1;
@@ -220,7 +219,7 @@ sub page_nav {
 			}
 			$update_viewport = 1;
 		} elsif ($c eq 'o') {
-			push @Porcelain::Main::back_history, $addr;	# save last address to back_history
+			push @back_history, $addr;	# save last address to back_history
 			my $o_addr = c_prompt_str("open: ");	# not allowing relative links
 			if (not $o_addr =~ m{:}) {
 				$o_addr = "gemini://" . $o_addr;
@@ -270,11 +269,12 @@ sub page_nav {
 			$chosen_link = $c-1;
 			@last_links = @links;	# TODO: last links needs to store absolute links, or use last rq_addr from history
 			c_statusline "open link: $c - " . $last_links[$chosen_link];
-			push @Porcelain::Main::back_history, $addr;	# save last rq_addr to back_history
+			push @back_history, $addr;	# save last rq_addr to back_history
 			foreach (@last_links) {
 				$_ = url2absolute($addr, $_);
 			}
-			return $last_links[$chosen_link];
+			clean_exit $last_links[$chosen_link];
+			return "gemini://" . $last_links[$chosen_link];	# TODO: don't hardcode "gemini://"; this may be used for non-gemini links
 		}
 	}
 }

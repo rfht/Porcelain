@@ -43,8 +43,6 @@ use open ':encoding(UTF-8)';
 my $rq_addr;		# address of the request (URI, IRI, local, internal)
 my @stdin;		# only used if pipe/STDIN are used
 my ($vol, $dir, $fil);	# for local file location
-our @back_history;
-our @forward_history;
 our %open_with;
 our @searchlns;		# lines with matches for search 
 
