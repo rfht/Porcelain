@@ -11,6 +11,10 @@ use Curses;			# for $COLS
 use List::Util qw(min max);
 use Porcelain::CursesUI;
 use Porcelain::Format;
+use Porcelain::Porcelain;
+
+my @last_links;	# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
+my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 
 my $r;	# holds return value short-term
 
@@ -38,7 +42,7 @@ sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $di
 sub page_nav {
 	my ($domain, $addr, $valcert, $valdate, $renderformat, $host_cert, $content) = @_;
 	my @formatted;
-	undef @Porcelain::Main::links;
+	undef @links;
 
 	my $viewfrom = 0;	# top line to be shown
 	my $render_length;
@@ -53,7 +57,7 @@ sub page_nav {
 			$reflow_text = 0;
 			$update_viewport = 1;
 			if ($renderformat eq "gemini") {
-				gmiformat $content, \@formatted, \@Porcelain::Main::links;
+				gmiformat $content, \@formatted, \@links;
 			} elsif ($renderformat eq "plain") {
 				plainformat $content, \@formatted;
 			}
@@ -64,7 +68,7 @@ sub page_nav {
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
 			c_title_win $host_cert, $addr, $valcert, $valdate;
-			render $renderformat, $viewfrom, $viewto, \@formatted, \@Porcelain::Main::links, $Porcelain::Main::searchstr;
+			render $renderformat, $viewfrom, $viewto, \@formatted, \@links, $Porcelain::Main::searchstr;
 			refresh;
 		}
 		$update_viewport = 0;
@@ -85,7 +89,7 @@ sub page_nav {
 			#	- type
 			#	- date last renewed
 			#	- time since last renewal
-			my @info = ("Domain:\t\t\t" . $domain, "Resource:\t\t" . $Porcelain::Main::rq_addr);
+			my @info = ("Domain:\t\t\t" . $domain, "Resource:\t\t" . $addr);
 			# TODO: order the output to match 'openssl x509 -text -noout -in <cert>'
 			push @info, "Server Cert:";
 			push @info, "\t\t\tSubject:\t\t" . $Porcelain::Main::host_cert->subject();
@@ -108,22 +112,19 @@ sub page_nav {
 			delwin($infowin);
 			$update_viewport = 1;
 		} elsif ($c eq 'q') {	# quit
-			undef $Porcelain::Main::rq_addr;
-			return;
+			return undef;
 		} elsif ($c eq 'r') {	# go to domain root
-			$Porcelain::Main::rq_addr = "gemini://" . gem_host($Porcelain::Main::rq_addr);
-			return;
+			return "gemini://" . gem_host($addr);
 		} elsif ($c eq 'R') {	# reload page
 			return;
 		} elsif ($c eq 'u') {	# up in directories on domain
-			my $slashcount = ($Porcelain::Main::rq_addr =~ tr|/||);
+			my $slashcount = ($addr =~ tr|/||);
 			if ($slashcount > 3) {	# only go up if not at root of the domain
-				$Porcelain::Main::rq_addr =~ s|[^/]+/[^/]*$||;
-				return;
+				return($addr =~ s|[^/]+/[^/]*$||r);
 			}
 			# TODO: warn if can't go up
 		} elsif ($c eq 'v') {	# verify server identity
-			my $domain = gem_host $Porcelain::Main::rq_addr;
+			my $domain = gem_host $addr;
 			# ask for SHA-256, manual confirmation, or URL
 			undef $r;
 			until ($r) {
@@ -166,28 +167,24 @@ sub page_nav {
 			}
 			# TODO: implement creating the record and storing it
 		} elsif ($c eq "]") {	# 'next' gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
-			if (defined $Porcelain::Main::chosen_link && $Porcelain::Main::chosen_link < scalar(@Porcelain::Main::last_links)-1 && defined $Porcelain::Main::last_links[$Porcelain::Main::chosen_link+1]) {
-				$Porcelain::Main::chosen_link++;
-				$Porcelain::Main::rq_addr = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
-				return;
+			if (defined $chosen_link && $chosen_link < scalar(@last_links)-1 && defined $last_links[$chosen_link+1]) {
+				$chosen_link++;
+				return $last_links[$chosen_link];
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "[") {	# 'previous'
-			if (defined $Porcelain::Main::chosen_link && $Porcelain::Main::chosen_link > 0 && defined $Porcelain::Main::last_links[$Porcelain::Main::chosen_link-1]) {
-				$Porcelain::Main::chosen_link--;
-				$Porcelain::Main::rq_addr = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
-				return;
+			if (defined $chosen_link && $chosen_link > 0 && defined $last_links[$chosen_link-1]) {
+				$chosen_link--;
+				return $last_links[$chosen_link];
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
 			if (scalar(@Porcelain::Main::back_history) > 0) {
-				push @Porcelain::Main::forward_history, $Porcelain::Main::rq_addr;
-				$Porcelain::Main::rq_addr = pop @Porcelain::Main::back_history;
-				return;
+				push @Porcelain::Main::forward_history, $addr;
+				return(pop @Porcelain::Main::back_history);
 			}
 		} elsif ($c eq "\cL") {	# forward in history
 			if (scalar(@Porcelain::Main::forward_history) > 0) {
-				push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;
-				$Porcelain::Main::rq_addr = pop @Porcelain::Main::forward_history;
-				return;
+				push @Porcelain::Main::back_history, $addr;
+				return(pop @Porcelain::Main::forward_history);
 			}
 		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
 			$reflow_text = 1;
@@ -228,12 +225,12 @@ sub page_nav {
 			}
 			$update_viewport = 1;
 		} elsif ($c eq 'o') {
-			push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;	# save last address to back_history
-			$Porcelain::Main::rq_addr = c_prompt_str("open: ");	# not allowing relative links
-			if (not $Porcelain::Main::rq_addr =~ m{:}) {
-				$Porcelain::Main::rq_addr = "gemini://" . $Porcelain::Main::rq_addr;
+			push @Porcelain::Main::back_history, $addr;	# save last address to back_history
+			my $o_addr = c_prompt_str("open: ");	# not allowing relative links
+			if (not $o_addr =~ m{:}) {
+				$o_addr = "gemini://" . $o_addr;
 			}
-			return;
+			return $o_addr;
 		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
 			my $s = c_prompt_str(": ");
 			# 'up'/'..'
@@ -253,14 +250,14 @@ sub page_nav {
 			}
 			$update_viewport = 1;
 		} elsif ( $c =~ /\d/ ) {
-			c_statusline "open link: $c - " . $Porcelain::Main::links[$c-1];
-			if (scalar(@Porcelain::Main::links) >= 10) {
+			c_statusline "open link: $c - " . $links[$c-1];
+			if (scalar(@links) >= 10) {
 				timeout(500);
 				my $keypress = getch;
 				if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {	# ignore non-digit input
 					$c .= $keypress;
-					c_statusline "open link: $c - " . $Porcelain::Main::links[$c-1];
-					if (scalar(@Porcelain::Main::links) >= 100) {	# supports up to 999 links in a page
+					c_statusline "open link: $c - " . $links[$c-1];
+					if (scalar(@links) >= 100) {	# supports up to 999 links in a page
 						undef $keypress;
 						my $keypress = getch;
 						if (defined $keypress && $keypress =~ /\d/ && $keypress >= 0) {
@@ -270,20 +267,19 @@ sub page_nav {
 				}
 				timeout(-1);
 			}
-			unless ($c <= scalar(@Porcelain::Main::links)) {
+			unless ($c <= scalar(@links)) {
 				delwin($status_win);
 				c_err "link number outside of range of current page: $c";
 				return;
 			}
-			$Porcelain::Main::chosen_link = $c-1;
-			@Porcelain::Main::last_links = @Porcelain::Main::links;	# TODO: last links needs to store absolute links, or use last rq_addr from history
-			c_statusline "open link: $c - " . $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
-			push @Porcelain::Main::back_history, $Porcelain::Main::rq_addr;	# save last rq_addr to back_history
-			foreach (@Porcelain::Main::last_links) {
-				$_ = Porcelain::Main::url2absolute($Porcelain::Main::rq_addr, $_);
+			$chosen_link = $c-1;
+			@last_links = @links;	# TODO: last links needs to store absolute links, or use last rq_addr from history
+			c_statusline "open link: $c - " . $last_links[$chosen_link];
+			push @Porcelain::Main::back_history, $addr;	# save last rq_addr to back_history
+			foreach (@last_links) {
+				$_ = url2absolute($addr, $_);
 			}
-			$Porcelain::Main::rq_addr = $Porcelain::Main::last_links[$Porcelain::Main::chosen_link];
-			return;
+			return $last_links[$chosen_link];
 		}
 	}
 }

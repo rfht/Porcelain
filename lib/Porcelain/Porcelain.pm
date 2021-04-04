@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(lines readconf readtext sep uri_class);
+our @EXPORT = qw(lines readconf readtext sep uri_class url2absolute);
 
 sub lines {	# multi-line text scalar --> $first_line / @lines
 	my @lines = (split /\n/, $_[0]);

@@ -8,7 +8,7 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str
 		c_statusline c_title_win c_warn caught_sigint clean_exit
 		downloader hlsearch
-		init_cursesui render $main_win $status_win $title_win
+		init_cursesui render $main_win $status_win $title_win @links
 );
 
 use Curses;
@@ -20,6 +20,8 @@ use Porcelain::Porcelain;
 our $main_win;
 our $title_win;
 our $status_win;
+
+our @links;	# TODO: is this the best place for @links?
 
 use constant MAX_VROWS => 1024 * 1024;	# max virtual rows used in curses pads
 use constant MAX_VCOLS => 1024;		# maximum virtual columns used in curses pads
