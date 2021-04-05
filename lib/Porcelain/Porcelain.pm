@@ -5,7 +5,14 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(lines readconf readtext sep uri_class url2absolute);
+our @EXPORT = qw(gem_host lines readconf readtext sep uri_class url2absolute);
+
+sub gem_host {
+	my $out = $_[0];
+	$out = substr($out, 9) if substr($out, 0, 9) eq "gemini://";	# remove leading 'gemini://'
+	$out =~ s|/.*|/|;
+	return $out;
+}
 
 sub lines {	# multi-line text scalar --> $first_line / @lines
 	my @lines = (split /\n/, $_[0]);

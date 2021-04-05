@@ -70,14 +70,6 @@ our $hosts_file = $porcelain_dir . "/known_hosts";	# obsolete; still used in Cry
 
 $SIG{INT} = \&caught_sigint;
 
-### Subs ###
-sub gem_host {
-	my $input = $_[0];
-	my $out = substr $input, 9;	# remove leading 'gemini://'
-	$out =~ s|/.*||;
-	return $out;
-}
-
 ### Process CLI Options ###
 my $configfile = $porcelain_dir . "/porcelain.conf";
 my $opt_dump =		'';	# dump page to STDOUT
