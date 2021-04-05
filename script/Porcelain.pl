@@ -193,7 +193,9 @@ if ($opt_pledge) {
 ### Request loop ###
 init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
 # TODO: empty/undef all these arrays after init_request?
+#	-> consider calling subs reset_crypto etc.
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;
+	clean_exit $rq_addr;
 }
 clean_exit "Bye...";

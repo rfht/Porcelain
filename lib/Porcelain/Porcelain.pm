@@ -82,20 +82,11 @@ sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute
 		if ($curdir =~ m{://.+/}) {
 			$curdir = substr($cururl, 0, rindex($cururl, '/'));
 		}
-		while ($newurl =~ m{^\.{1,2}/?}) {
-			$newurl =~ s/^\.\///;
-			if ($newurl =~ m{^\.\./?}) {
-				$curdir =~ s/\/[^\/]*\/?$//;
-				$newurl =~ s/^\.\.\/?//;
-			}
-		}
-		if (not $newurl =~ m{^/} && not $curdir =~ m{/$}) {
-			$newurl = $curdir . '/' . $newurl;
-		} else {
-			$newurl = $curdir . $newurl;
-		}
+		$newurl = $curdir . $newurl;
+		$newurl =~ s|/[^/]+/\.\./|/|g;		# process '..' as up in url hierarchy
+		$newurl =~ s|/\./|/|g;			# strip '.' in url
 	}
-	return $newurl;		# no change if $newurl is already absolute
+	return $newurl;
 }
 
 1;

@@ -274,8 +274,7 @@ sub page_nav {
 			foreach (@last_links) {
 				$_ = url2absolute($addr, $_);
 			}
-			clean_exit $last_links[$chosen_link];
-			return "gemini://" . $last_links[$chosen_link];	# TODO: don't hardcode "gemini://"; this may be used for non-gemini links
+			return $last_links[$chosen_link];	# TODO: don't hardcode "gemini://"; this may be used for non-gemini links
 		}
 	}
 }
