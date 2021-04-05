@@ -15,6 +15,7 @@ use Porcelain::CursesUI;
 use Porcelain::Format;
 use Porcelain::Porcelain;
 
+my @links;
 my @last_links;	# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 

@@ -131,7 +131,7 @@ sub request {	# first line to process all requests for an address. params: addre
 	c_statusline "Loading $rq_addr ...";
 
 	### Determine connection type and obtain content ###
-	my ($conn, $addr) = conn_parse $rq_addr;
+	my ($conn, $addr) = conn_parse $rq_addr;	# $addr does not contain "gemini://"
 	if ($conn eq "about") {	# about:..., stdin
 		# set content
 		@content = @{$habout{$addr}};
