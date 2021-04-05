@@ -73,20 +73,17 @@ sub uri_class {	# URL string --> string of class ('gemini', 'https', etc.)
 }
 
 sub url2absolute {	# current URL, new (potentially relative) URL -> new absolute URL
-	my $cururl = $_[0];
-	my $newurl = $_[1];
-	if (uri_class($newurl) eq 'root') {
-		$newurl = "gemini://" . gem_host($cururl) . $newurl;
-	} elsif (uri_class($newurl) eq 'relative') {
-		my $curdir = $cururl;
-		if ($curdir =~ m{://.+/}) {
-			$curdir = substr($cururl, 0, rindex($cururl, '/'));
-		}
-		$newurl = $curdir . $newurl;
-		$newurl =~ s|/[^/]+/\.\./|/|g;		# process '..' as up in url hierarchy
-		$newurl =~ s|/\./|/|g;			# strip '.' in url
+	my $cur = $_[0];
+	my $new = $_[1];
+	if (uri_class($new) eq 'root') {
+		$new = "gemini://" . gem_host($cur) . $new;
+	} elsif (uri_class($new) eq 'relative') {
+		$cur =~ s|/[^/]*$|/|;
+		$new = $cur . $new;
+		$new =~ s|/[^/]+/\.\./|/|g;		# process '..' as up in url hierarchy
+		$new =~ s|/\./|/|g;			# strip '.' in url
 	}
-	return $newurl;
+	return $new;
 }
 
 1;

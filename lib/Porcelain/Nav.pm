@@ -92,6 +92,7 @@ sub page_nav {
 		$fn = 0x0 if not defined $fn;	# TODO: double-check that this doesn't conflict with any KEY_*
 		if ($c eq 'H') {	# show history
 			# TODO: implement
+			clean_exit(join "\n", @back_history);
 			return "about:history";
 		} elsif ($c eq 'i') {	# basic info (position in document, etc.	# TODO: expand, e.g. URL
 			my $linesfrom = $viewfrom + 1;
