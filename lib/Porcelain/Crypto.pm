@@ -7,7 +7,7 @@ require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(fingerprint gen_client_cert gen_identity gen_privkey init_crypto
 		store_cert store_privkey validate_cert sslcat_porcelain
-		$idents_dir
+		$hosts_file $idents_dir
 );
 
 use Net::SSLeay;
@@ -21,6 +21,7 @@ my $fp_algo;
 my $rsa_bits;
 
 our $idents_dir;
+our $hosts_file;
 
 my @known_hosts;
 

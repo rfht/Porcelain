@@ -29,7 +29,7 @@ use Cwd qw(abs_path);
 use File::Spec;			# for splitpath, canonpath
 use Getopt::Long qw(:config bundling require_order );
 use Pod::Usage;
-use Porcelain::Crypto;	# for $idents_dir
+use Porcelain::Crypto;	# for $hosts_file, $idents_dir
 use Porcelain::CursesUI;	# TODO: really needed in Porcelain::Main ??
 use Porcelain::Format;		# TODO: really needed in Porcelain::Main ??
 use Porcelain::Nav;		# TODO: really needed in Porcelain::Main ??
@@ -56,7 +56,7 @@ my @bookmarks;
 my @client_certs;
 my @config;
 my @history;
-our @known_hosts;
+my @known_hosts;
 my @subscriptions;
 my %text_stores = (
 	"bookmarks"		=> \@bookmarks,
@@ -66,7 +66,7 @@ my %text_stores = (
 	"known_hosts"		=> \@known_hosts,
 	"subscriptions"		=> \@subscriptions,
 );
-our $hosts_file = $porcelain_dir . "/known_hosts";	# obsolete; still used in Crypto.pm.
+$hosts_file = $porcelain_dir . "/known_hosts";	# obsolete; still used in Crypto.pm.
 
 $SIG{INT} = \&caught_sigint;
 
@@ -149,7 +149,13 @@ undef $text;
 init_cursesui unless $opt_dump;
 init_crypto \@known_hosts;
 init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
-# TODO: empty/undef all these arrays after init_request etc.?
+# free the memory used by these arrays
+undef @known_hosts;
+undef @pod;
+undef @bookmarks;
+undef @history;
+undef @subscriptions;
+undef @client_certs;
 
 ### Secure: unveil, pledge ###
 if ($opt_unveil) {
