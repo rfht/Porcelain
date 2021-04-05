@@ -14,6 +14,7 @@ use Porcelain::Crypto;
 use Porcelain::CursesUI;
 use Porcelain::Format;
 use Porcelain::Porcelain;
+use Porcelain::RandomArt;
 
 my @links;
 my @last_links;	# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
@@ -111,7 +112,8 @@ sub page_nav {
 			push @info, "\t\t\tNot Valid Before:\t" . Net::SSLeay::P_ASN1_TIME_get_isotime(Net::SSLeay::X509_get_notBefore($host_cert));
 			push @info, "\t\t\tNot Valid After:\t" . Net::SSLeay::P_ASN1_TIME_get_isotime(Net::SSLeay::X509_get_notAfter($host_cert));
 			push @info, "\t\t\tFingerprint:\n\t\t\t" . fingerprint($host_cert); # TODO: improve formatting
-			push @info, "\n\n" . randomart(lc($host_cert->fingerprint_sha256() =~ tr/://dr)); my $infowin = c_fullscr join("\n", @info), "Info";
+			push @info, "\n\n" . randomart(fingerprint($host_cert));
+			my $infowin = c_fullscr join("\n", @info), "Info";
 			undef $c;
 			$c = getchar;
 			delwin($infowin);
