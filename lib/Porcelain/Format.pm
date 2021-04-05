@@ -81,7 +81,7 @@ sub gmiformat {	# break down long lines, space correctly: inarray  => outarray (
 				$line = wrap('`', '~', $line);
 				$line = (split("\n", $line))[0];
 			}
-			push @$outarray, $line;
+			fmtline($line, $outarray, '`', '~');
 		} else {
 			# TODO: transform tabs into single space?
 			# TODO: collapse multiple blank chars (e.g. '  ') into a single space?

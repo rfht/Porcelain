@@ -258,12 +258,13 @@ sub render {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted t
 				attron($main_win, A_UNDERLINE);
 				$line = $2;
 			} elsif ($line_type eq '*') {			# Unordered List Item
-				$line =~ s/^\*/-/;
+				$line = "- " . $line;
 				attrset($main_win, COLOR_PAIR(2));
 			} elsif ($line_type eq '-') {			# Unordered List Item (cont.)
-				$line =~ s/^\-/ /;
+				$line = "  " . $line;
 				attrset($main_win, COLOR_PAIR(2));
 			} elsif ($line_type eq '>' || $line_type eq '<') {		# Quote
+				$line = "> " . $line;
 				attrset($main_win, COLOR_PAIR(3));
 			} elsif ($line_type eq ':' || $line_type eq ';') {		# Text line 
 				attrset($main_win, COLOR_PAIR(2));
