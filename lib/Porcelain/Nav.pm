@@ -19,8 +19,8 @@ my @links;
 my @last_links;	# array list from last page, for next/previous (see gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi)
 my $chosen_link;	# holds a number of what link was chosen, refers to @last_links entries
 
-my @back_history;
-my @forward_history;
+my @back;
+my @forward;
 
 my $searchstr = '';	# search string
 my @searchlns;		# lines that match searchstr
@@ -64,7 +64,7 @@ sub page_nav {
 	my $update_viewport;
 	my $reflow_text = 1;
 
-	push @back_history, $addr;
+	push @back, $addr;
 	while (1) {
 		if (defined $status_win) {
 			delwin($status_win);
@@ -94,7 +94,7 @@ sub page_nav {
 		$fn = 0x0 if not defined $fn;	# TODO: double-check that this doesn't conflict with any KEY_*
 		if ($c eq 'H') {	# show history
 			# TODO: implement
-			clean_exit(join "\n", ("FORWARD", @forward_history, "BACK", @back_history));
+			clean_exit(join "\n", ("FORWARD", @forward, "BACK", @back));
 			return "about:history";
 		} elsif ($c eq 'i') {	# basic info (position in document, etc.	# TODO: expand, e.g. URL
 			my $linesfrom = $viewfrom + 1;
@@ -182,16 +182,16 @@ sub page_nav {
 				return(check_add_prot $last_links[$chosen_link]);
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
-			if (scalar(@back_history) > 1) {
-				push(@forward_history, pop @back_history);
-				return(check_add_prot(pop @back_history));
+			if (scalar(@back) > 1) {
+				push(@forward, pop @back);
+				return(check_add_prot(pop @back));
 			}
-			# TODO: warn/error if at end of back_history (scalar(@back_history) == 1)
+			# TODO: warn/error if at end of back (scalar(@back) == 1)
 		} elsif ($c eq "\cL") {	# forward in history
-			if (scalar(@forward_history) > 0) {
-				return(check_add_prot(pop @forward_history));
+			if (scalar(@forward) > 0) {
+				return(check_add_prot(pop @forward));
 			}
-			# TODO: warn/error if at end of forward_history (scalar(@forward_history) == 0)
+			# TODO: warn/error if at end of forward (scalar(@forward) == 0)
 		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
 			$reflow_text = 1;
 		} elsif ($c eq ' ' || $fn == KEY_NPAGE) {
@@ -231,7 +231,6 @@ sub page_nav {
 			}
 			$update_viewport = 1;
 		} elsif ($c eq 'o') {
-			#push @back_history, $addr;	# save last address to back_history
 			my $o_addr = c_prompt_str("open: ");	# not allowing relative links
 			return(check_add_prot $o_addr);
 		} elsif ($c eq ':') {
@@ -279,7 +278,6 @@ sub page_nav {
 			$chosen_link = $c-1;
 			@last_links = @links;	# TODO: last links needs to store absolute links, or use last rq_addr from history
 			c_statusline "open link: $c - " . $last_links[$chosen_link];
-			#push @back_history, $addr;	# save last rq_addr to back_history
 			foreach (@last_links) {
 				$_ = url2absolute($addr, $_);
 			}
