@@ -48,3 +48,4 @@
 # - clean up module usage between script and Porcelain modules
 # - use constant pragma or p5-Readonly{,-XS} to harden certain variables like %open_with
 # - fix connection issue without trailing '/'
+# - clean out use of "our" variables

@@ -25,7 +25,7 @@ my @forward_history;
 my $searchstr = '';	# search string
 my @searchlns;		# lines that match searchstr
 
-my $r;	# holds return value short-term
+my $r;	# holds return value short-term	# TODO: use in subs only and remove this variable?
 
 sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $displayrows, $render_length --> new $viewfrom
 	my ($sequence, $fromln, $rows, $render_length) = @_; 
@@ -46,6 +46,12 @@ sub next_match {	# scroll to next match in searchlns; \@sequence, $viewfrom, $di
 		}
 		return $fromln;
 	}
+}
+
+sub check_add_prot {	# if address is without protocol, add "gemini://".
+			# params: address with or without protocol. return: address with protocol
+	return "gemini://" . $_[0] unless $_[0] =~ m{:};	# TODO: make more robust? check for '://'?
+	return $_[0];
 }
 
 sub page_nav {
@@ -86,7 +92,7 @@ sub page_nav {
 		$fn = 0x0 if not defined $fn;	# TODO: double-check that this doesn't conflict with any KEY_*
 		if ($c eq 'H') {	# show history
 			# TODO: implement
-			return;
+			return "about:history";
 		} elsif ($c eq 'i') {	# basic info (position in document, etc.	# TODO: expand, e.g. URL
 			my $linesfrom = $viewfrom + 1;
 			my $linesto = $viewto + 1;
@@ -110,13 +116,13 @@ sub page_nav {
 		} elsif ($c eq 'q') {	# quit
 			return undef;
 		} elsif ($c eq 'r') {	# go to domain root
-			return "gemini://" . gem_host($addr);
+			return(check_add_prot gem_host($addr));
 		} elsif ($c eq 'R') {	# reload page
-			return;
+			return(check_add_prot $addr);
 		} elsif ($c eq 'u') {	# up in directories on domain
 			my $slashcount = ($addr =~ tr|/||);
-			if ($slashcount > 3) {	# only go up if not at root of the domain
-				return($addr =~ s|[^/]+/[^/]*$||r);
+			if ($slashcount > 1) {	# only go up if not at root of the domain
+				return(check_add_prot($addr =~ s|[^/]+/[^/]*$||r));
 			}
 			# TODO: warn if can't go up
 		} elsif ($c eq 'v') {	# verify server identity
@@ -165,22 +171,22 @@ sub page_nav {
 		} elsif ($c eq "]") {	# 'next' gemini://gemini.circumlunar.space/users/solderpunk/gemlog/gemini-client-navigation.gmi
 			if (defined $chosen_link && $chosen_link < scalar(@last_links)-1 && defined $last_links[$chosen_link+1]) {
 				$chosen_link++;
-				return $last_links[$chosen_link];
+				return(check_add_prot $last_links[$chosen_link]);
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "[") {	# 'previous'
 			if (defined $chosen_link && $chosen_link > 0 && defined $last_links[$chosen_link-1]) {
 				$chosen_link--;
-				return $last_links[$chosen_link];
+				return(check_add_prot $last_links[$chosen_link]);
 			}	# TODO: warn/error if no such link
 		} elsif ($c eq "\cH" || $fn == KEY_BACKSPACE) {
 			if (scalar(@back_history) > 0) {
 				push @forward_history, $addr;
-				return(pop @back_history);
+				return(check_add_prot(pop @back_history));
 			}
 		} elsif ($c eq "\cL") {	# forward in history
 			if (scalar(@forward_history) > 0) {
 				push @back_history, $addr;
-				return(pop @forward_history);
+				return(check_add_prot(pop @forward_history));
 			}
 		} elsif ($fn eq KEY_RESIZE) {	# terminal has been resized
 			$reflow_text = 1;
@@ -223,11 +229,9 @@ sub page_nav {
 		} elsif ($c eq 'o') {
 			push @back_history, $addr;	# save last address to back_history
 			my $o_addr = c_prompt_str("open: ");	# not allowing relative links
-			if (not $o_addr =~ m{:}) {
-				$o_addr = "gemini://" . $o_addr;
-			}
-			return $o_addr;
-		} elsif ($c eq ':') {	# TODO: implement long option commands, e.g. help...
+			return(check_add_prot $o_addr);
+		} elsif ($c eq ':') {
+			# TODO: implement long option commands, e.g. help...
 			my $s = c_prompt_str(": ");
 			# 'up'/'..'
 			# 'root'/'/'
@@ -275,7 +279,7 @@ sub page_nav {
 			foreach (@last_links) {
 				$_ = url2absolute($addr, $_);
 			}
-			return $last_links[$chosen_link];	# TODO: don't hardcode "gemini://"; this may be used for non-gemini links
+			return(check_add_prot $last_links[$chosen_link]);
 		}
 	}
 }

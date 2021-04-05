@@ -196,6 +196,5 @@ init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
 #	-> consider calling subs reset_crypto etc.
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
 	$rq_addr = request $rq_addr, \@stdin;
-	clean_exit $rq_addr;
 }
 clean_exit "Bye...";
