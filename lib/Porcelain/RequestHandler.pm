@@ -174,7 +174,7 @@ sub request {	# first line to process all requests for an address. params: addre
 		# TOFU
 		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
 		undef $valdate;
-		($valcert, my $details) = validate_cert($host_cert, $domain, \@Porcelain::Main::known_hosts);
+		($valcert, my $details) = validate_cert($host_cert, $domain);
 		if ($valcert == 3) {
 			# (3, Date): Server verified, date is LAST date of verification (more recent is better)
 			$valdate = $details;

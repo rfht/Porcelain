@@ -22,6 +22,8 @@ my $rsa_bits;
 
 our $idents_dir;
 
+my @known_hosts;
+
 my $r;		# hold short-term return values
 
 sub gen_privkey {	# --> return private key
@@ -80,21 +82,22 @@ sub gen_identity {	# generate a new privkey - cert identity. cert lifetime in da
 }
 
 sub init_crypto {
+	@known_hosts = @{$_[0]};
 	Net::SSLeay::initialize();
 }
 
-sub validate_cert {	# params: certificate, domainname, known_hosts array
+sub validate_cert {	# params: certificate, domainname
 			# return:
 			# (3, date last verified - shorter is better)
 			# (2, date first TOFU accepted - longer is better)
 			# (1, sha256 of host cert $x509 - for storing)
 			# (0, sha256 of host cert $x509 - can be used to update entry in known_hosts)
 			# (-1, error string - something else went wrong)
-	my ($x509, $domain, $known_hosts) = @_;
+	my ($x509, $domain) = @_;
 	# get sha256 fingerprint - it will be needed in all scenarios
 	my $algo = $fp_algo || DEFAULT_FP_ALGO;
 	my $fp = fingerprint($x509);
-	my @kh_match = grep(/^$domain\s+$algo/, @$known_hosts);	# is $domain in @$known_hosts?
+	my @kh_match = grep(/^$domain\s+$algo/, @known_hosts);	# is $domain in @known_hosts?
 	if (scalar(@kh_match) > 1) {
 		return (-1, "more than 1 match in known_hosts for $domain + $algo");
 	} elsif (scalar(@kh_match) == 0) {

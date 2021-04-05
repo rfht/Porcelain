@@ -138,16 +138,18 @@ if (not defined $file_in) {		# most common case - no local file passed
 	}
 }
 
-### Inits ###
-init_cursesui unless $opt_dump;
-init_crypto;
-
 # Make pod2usage text usable in about:pod/about:man
 open my $fh, '>', \my $text;
 pod2usage(-input => $podfile, -output => $fh, -exitval => 'NOEXIT', -verbose => 2);
 close $fh;
 my @pod = split "\n", $text;
 undef $text;
+
+### Inits ###
+init_cursesui unless $opt_dump;
+init_crypto \@known_hosts;
+init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
+# TODO: empty/undef all these arrays after init_request etc.?
 
 ### Secure: unveil, pledge ###
 if ($opt_unveil) {
@@ -183,10 +185,8 @@ if ($opt_pledge) {
 }
 
 ### Request loop ###
-init_request \@pod, \@bookmarks, \@history, \@subscriptions, \@client_certs;
-# TODO: empty/undef all these arrays after init_request?
-#	-> consider calling subs reset_crypto etc.
 while (defined $rq_addr) {	# $rq_addr must be fully qualified: '<protocol>:...' or '-'
+	# TODO: consider calling subs reset_crypto etc.
 	$rq_addr = request $rq_addr, \@stdin;
 }
 clean_exit "Bye...";
