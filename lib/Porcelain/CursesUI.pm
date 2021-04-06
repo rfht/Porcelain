@@ -277,9 +277,8 @@ sub render {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted t
 				attron($main_win, A_UNDERLINE);
 			} elsif ($line_type eq '+') {					# Continuation of Link
 				attroff($main_win, A_UNDERLINE);
-				addstr($main_win, $1);
+				addstr($main_win, " " x 4);
 				attron($main_win, A_UNDERLINE);
-				$line = $2;
 			} elsif ($line_type eq '*') {			# Unordered List Item
 				$line = "- " . $line;
 				attrset($main_win, COLOR_PAIR(2));

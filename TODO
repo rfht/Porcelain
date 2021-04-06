@@ -55,3 +55,4 @@ Use of uninitialized value $render_format in string eq at /home/thfr/cvs/project
 Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects/Porcelain/script/../lib/Porcelain/Nav.pm line 77.
 Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects/Porcelain/script/../lib/Porcelain/Nav.pm line 79.
 
+# with links continued into another line, fix correct color display of the link
