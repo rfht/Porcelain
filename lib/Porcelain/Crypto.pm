@@ -110,7 +110,7 @@ sub validate_cert {	# params: certificate, domainname
 			strftime("%Y-%m-%d", localtime);
 		append_file $hosts_file, $new_kh_line || clean_die "Error writing $domain entry to $hosts_file";
 		push @known_hosts, $new_kh_line;
-		return (1, $fg, undef);	# host not known
+		return (1, $fp, undef);	# host not known
 	} elsif (scalar(@kh_match) == 1) {
 		my ($kh_domain, $kh_algo, $kh_fp, $kh_notAfter, $kh_date, $kh_oob) = split /\s+/, $kh_match[0];
 		if ($fp eq $kh_fp) {		# TOFU match

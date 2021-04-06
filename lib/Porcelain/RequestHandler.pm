@@ -184,7 +184,6 @@ sub request {	# first line to process all requests for an address. params: addre
 			$valdate = $details;
 		} elsif ($valcert == 1) {
 			# (1, fingerprint): unknown host, fingerprint and notAfter for storing
-			clean_exit $details;
 		} elsif ($valcert == 0) {
 			# (0, fingerprint): fingerprint mismatch, new fingerprint offered in case user wants to update it
 			c_err "fingerprint mismatch. [U]pdate fingerprint, [A]bort? ";
