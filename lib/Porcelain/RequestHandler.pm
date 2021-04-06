@@ -170,10 +170,10 @@ sub request {	# first line to process all requests for an address. params: addre
 		}
 		undef $host_cert;		# TODO: really needed? Can this line be removed somehow?
 		(my $response, my $err, $host_cert) = sslcat_porcelain($domain, $port, "gemini://$addr\r\n", $client_cert, $client_key);
-		die "Error while trying to establish TLS connection: $!" if $err;	# TODO: die => clean_die;
+		clean_die "Error while trying to establish TLS connection: $!" if $err;	# TODO: die => clean_die;
 
 		# TOFU
-		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
+		clean_die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
 		undef $valdate;
 		($valcert, my $details, $notAfter) = validate_cert($host_cert, $domain);
 		if ($valcert == 3) {

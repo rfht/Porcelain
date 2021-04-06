@@ -139,6 +139,7 @@ sub page_nav {
 			}
 			chomp $r;
 			$r = lc $r;
+			$r =~ tr/://d;
 			if ($r eq "m") {			# manual mode
 				my $match_win_width = max(int($COLS / 1.25), 22);
 				my $match_win_height = max(int($displayrows / 1.25), 12);
@@ -151,23 +152,17 @@ sub page_nav {
 				$r = getch;
 				delwin($match_win);
 				if (lc($r) eq 'y') {
-					verify_cert $domain, fingerprint($host_cert), $notAfter, 'm';
+					verify_cert $domain, fingerprint($host_cert), $notAfter, 'v';
 					return(check_add_prot($addr));
 				}
 				$update_viewport = 1;
-			} elsif ($r =~ tr/://d =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
-				if ($r = lc($r) eq fingerprint($host_cert)) {
-					clean_exit "SHA-256 match";
+			} elsif ($r =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
+				if ($r eq fingerprint($host_cert)) {
+					verify_cert $domain, $r, $notAfter, 'f';
+					return(check_add_prot $addr);
 				} else {
-					clean_exit "SHA-256 mismatch";
+					c_err "SHA-256 mismatch";
 				}
-				# TODO:
-				#	If it matches, should turn green (or stay green).
-				#	If it doesn't match, show warning/error, and ask if user is sure that key entered is correct
-				#	If entered key is correct, host will now be red
-				#	If was not correct or not sure, offer entry of a new key or bail out and stay yellow
-				#	Store host and user-entered SHA-256 if A) match, or B) confirmed correct key with mismatch
-				#	otherwise, remove entry; staying yellow
 			} elsif (not $r =~ /\s/) {		# URL	# TODO: refine?
 				# TODO: implement fetching an SHA-256, pubkey (other?)
 				clean_exit "Third-party OOB verification not yet implemented; URL provided: $r";

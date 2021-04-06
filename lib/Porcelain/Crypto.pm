@@ -120,8 +120,8 @@ sub validate_cert {	# params: certificate, domainname
 }
 
 sub verify_cert {	# params: domain, fingerprint, method(m, p, t) --> return: 1 (success) or 0 (failure)
-			#	m: manual comparison
-			#	p: paste of fingerprint
+			#	v: visual comparison (randomart or fingerprint)
+			#	f: matching fingerprint entered/pasted by user
 			#	t: third-party
 	my ($vdom, $vfp, $vnotAfter, $vmethod) = @_;
 	$vdom =~ s|/+$||;

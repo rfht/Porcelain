@@ -153,7 +153,7 @@ sub c_title_win {	# modify $title_win. in: domainname
 		$sec_status = "Local File";
 	}
 	clear($title_win);
-	addstr($title_win, $addr . "\t" . $sec_status);
+	addstr($title_win, $addr . " " . $sec_status);
 	refresh($title_win);
 }
 
