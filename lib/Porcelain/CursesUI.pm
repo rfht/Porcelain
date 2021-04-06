@@ -240,6 +240,7 @@ sub render {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted t
 	my $y;
 	my $x;
 	my $line_type;
+	my $li_num;
 	clear($main_win);
 	move($main_win, 0, 0);	# keep space for title_win
 	while ($hpos <= $hstop) {
@@ -263,7 +264,7 @@ sub render {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted t
 				attron($main_win, A_BOLD);
 			} elsif ($line_type eq '=') {					# Link
 				# TODO: style links according to same domain vs. other gemini domains
-				my ($li_num) = $line =~ /\[(\d+)\]/;
+				($li_num) = $line =~ /\[(\d+)\]/;
 				$li_num = int($li_num - 1);	# zero based
 				if (uri_class(${$links}[$li_num]) eq 'gemini' || uri_class(${$links}[$li_num]) eq 'relative' || uri_class(${$links}[$li_num]) eq 'root') {
 					attrset($main_win, COLOR_PAIR(5));	# cyan on black
@@ -274,10 +275,22 @@ sub render {	# viewfrom, viewto, text/gemini (as array of lines!) => formatted t
 				} else {	# not sure what this is linking to
 					attrset($main_win, COLOR_PAIR(2));
 				}
+				(my $lindex, $line) = sep $line;
+				$lindex = hlsearch $lindex, $searchstr;
+				addstr($main_win, $lindex . " ");
 				attron($main_win, A_UNDERLINE);
 			} elsif ($line_type eq '+') {					# Continuation of Link
 				attroff($main_win, A_UNDERLINE);
-				addstr($main_win, " " x 4);
+				addstr($main_win, " " x (length($li_num) + 3));		# TODO: find way to accurately calculate the indent
+				if (uri_class(${$links}[$li_num]) eq 'gemini' || uri_class(${$links}[$li_num]) eq 'relative' || uri_class(${$links}[$li_num]) eq 'root') {
+					attrset($main_win, COLOR_PAIR(5));	# cyan on black
+				} elsif (uri_class(${$links}[$li_num]) eq 'gopher') {
+					attrset($main_win, COLOR_PAIR(6));	# magenta on black
+				} elsif (substr(uri_class(${$links}[$li_num]), 0, 4) eq 'http') {
+					attrset($main_win, COLOR_PAIR(1));	# yellow on black
+				} else {	# not sure what this is linking to
+					attrset($main_win, COLOR_PAIR(2));
+				}
 				attron($main_win, A_UNDERLINE);
 			} elsif ($line_type eq '*') {			# Unordered List Item
 				$line = "- " . $line;
