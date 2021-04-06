@@ -49,3 +49,9 @@
 # - use constant pragma or p5-Readonly{,-XS} to harden certain variables like %open_with
 # - fix connection issue without trailing '/'
 # - clean out use of "our" variables
+
+When error opening a file:
+Use of uninitialized value $render_format in string eq at /home/thfr/cvs/projects/Porcelain/script/../lib/Porcelain/RequestHandler.pm line 283.
+Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects/Porcelain/script/../lib/Porcelain/Nav.pm line 77.
+Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects/Porcelain/script/../lib/Porcelain/Nav.pm line 79.
+

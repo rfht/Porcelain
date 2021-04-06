@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(append_file gem_host lines readconf readtext sep uri_class url2absolute);
+our @EXPORT = qw(append_file gem_host lines readconf readtext sep uri_class url2absolute write_file);
 
 sub gem_host {
 	my $out = $_[0];
@@ -56,6 +56,18 @@ sub append_file {	# append a line to a text file. params: filepath, textline -->
 	my ($filepath, $textline) = @_;
 	open my $fh, '>>', $filepath or return 0;
 	print $fh $textline . "\n";
+	close $fh;
+	return 1;
+}
+
+sub write_file {	# write/replace a file. params: filepath, array to write linewise, bool raw (opt.) --> return: 1 (success) or 0 (failure)
+	my $filepath = $_[0];
+	my @w_array = @{$_[1]};
+	$_[2] ? my $raw = ':raw' : my $raw = '';
+	open my $fh, ">$raw", $filepath or return 0;
+	foreach my $line (@w_array) {
+		print $fh $line . "\n";
+	}
 	close $fh;
 	return 1;
 }

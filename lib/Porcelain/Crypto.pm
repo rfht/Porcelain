@@ -55,16 +55,12 @@ sub gen_client_cert {	# days for cert validity, private key --> return cert
 # TODO: merge store_privkey and store_cert into same function (very similar)
 sub store_privkey {	# privkey, filename -->
 	my ($pk, $filenam) = @_;
-	open my $fh, '>:raw', $filenam or die;
-	print $fh Net::SSLeay::PEM_get_string_PrivateKey($pk);
-	close $fh;
+	write_file $filenam, Net::SSLeay::PEM_get_string_PrivateKey($pk), 1 or clean_die "Error storing new privkey";
 }
 
 sub store_cert {	# x509 cert, filename -->
 	my ($x509, $filenam) = @_;
-	open my $fh, '>:raw', $filenam or die;
-	print $fh Net::SSLeay::PEM_get_string_X509($x509);
-	close $fh;
+	write_file $filenam, Net::SSLeay::PEM_get_string_X509($x509), 1;
 }
 
 sub fingerprint {

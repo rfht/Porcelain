@@ -171,7 +171,7 @@ if ($opt_unveil) {
 	unveil("/etc/termcap", "r") || die "Unable to unveil: $!";
 	unveil("/usr/local/lib/libmagic.so.5.0", "r") || die "Unable to unveil: $!";	# TODO: find the version number and make this resilient to version updates
 	unveil("/usr/local/share/misc/magic.mgc", "r") || die "Unable to unveil: $!";
-	unveil("$ENV{'HOME'}/.porcelain", "rwc") || die "Unable to unveil: $!";	# TODO: remove rc?
+	unveil("$ENV{'HOME'}/.porcelain", "rw") || die "Unable to unveil: $!";	# TODO: remove r?
 	if (defined $file_in && $file_in ne "-") {
 		unveil($dir, "r") || die "Unable to unveil: $!";
 	}
