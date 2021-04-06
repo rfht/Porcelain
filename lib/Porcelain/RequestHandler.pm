@@ -136,6 +136,8 @@ sub request {	# first line to process all requests for an address. params: addre
 	if ($conn eq "about") {	# about:..., stdin
 		# set content
 		@content = @{$habout{$addr}};
+		$render_format = "gemini";
+		$addr = $rq_addr;
 	} elsif ($conn eq "file") {	# local file
 		# check MIME type
 		if (not -f $addr) {

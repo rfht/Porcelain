@@ -148,9 +148,14 @@ sub c_title_win {	# modify $title_win. in: domainname
 			die "invalid return status when trying to validate certificate";
 		}
 	} else {
-		# This is encountered if local file
-		bkgd($title_win, COLOR_PAIR(2) | A_REVERSE);
-		$sec_status = "Local File";
+		if (substr($addr, 0, 6) eq "about:") {
+			bkgd($title_win, COLOR_PAIR(3) | A_REVERSE);
+			$sec_status = "";
+		} else {
+			# This is encountered if local file
+			bkgd($title_win, COLOR_PAIR(2) | A_REVERSE);
+			$sec_status = "Local File";
+		}
 	}
 	clear($title_win);
 	addstr($title_win, $addr . " " . $sec_status);
