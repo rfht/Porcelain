@@ -23,6 +23,7 @@ my $redirect_count = 0;
 use constant MAX_REDIRECT => 5;	# TODO: allow custom value in config
 my $valcert;		# state of certificate validation. 3: verified; 2: TOFU; 1: new; 0: mismatch
 my $valdate;
+my $notAfter
 
 # about pages
 my @bookmarks;
@@ -174,7 +175,7 @@ sub request {	# first line to process all requests for an address. params: addre
 		# TOFU
 		die "No certificate received from host" if (not defined $host_cert);	# TODO: die => clean_die;
 		undef $valdate;
-		($valcert, my $details) = validate_cert($host_cert, $domain);
+		($valcert, my $details, $notAfter) = validate_cert($host_cert, $domain);
 		if ($valcert == 3) {
 			# (3, Date): Server verified, date is LAST date of verification (more recent is better)
 			$valdate = $details;

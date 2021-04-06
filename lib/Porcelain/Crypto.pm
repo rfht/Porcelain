@@ -100,19 +100,19 @@ sub validate_cert {	# params: certificate, domainname
 	my $fp = fingerprint($x509);
 	my @kh_match = grep(/^$domain\s+$algo/, @known_hosts);	# is $domain in @known_hosts?
 	if (scalar(@kh_match) > 1) {
-		return (-1, "more than 1 match in known_hosts for $domain + $algo");
+		return (-1, "more than 1 match in known_hosts for $domain + $algo", undef);
 	} elsif (scalar(@kh_match) == 0) {
-		return (1, $fp);		# host not known
+		return (1, $fp, undef);		# host not known
 	} elsif (scalar(@kh_match) == 1) {
-		my ($kh_domain, $kh_algo, $kh_fp, $kh_date, $kh_oob) = split /\s+/, $kh_match[0];
+		my ($kh_domain, $kh_algo, $kh_fp, $kh_notAfter, $kh_date, $kh_oob) = split /\s+/, $kh_match[0];
 		if ($fp eq $kh_fp) {		# TOFU match
-			return (2, $kh_date) unless $kh_oob;
-			return (3, $kh_date);
+			return (2, $kh_date, $kh_notAfter) unless $kh_oob;
+			return (3, $kh_date, $kh_notAfter);
 		} else {
-			return (0, $fp);
+			return (0, $fp, $kh_notAfter);
 		}
 	} else {
-		return (-1, "unexpected error trying to find $domain + $algo in known_hosts");
+		return (-1, "unexpected error trying to find $domain + $algo in known_hosts", undef);
 	}
 }
 
