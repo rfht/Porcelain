@@ -24,6 +24,13 @@ our $status_win;
 use constant MAX_VROWS => 1024 * 1024;	# max virtual rows used in curses pads
 use constant MAX_VCOLS => 1024;		# maximum virtual columns used in curses pads
 
+sub clean_die {
+	delwin($main_win);
+	delwin($title_win);
+	endwin;
+	die $_[0];
+}
+
 sub clean_exit {
 	delwin($main_win);
 	delwin($title_win);

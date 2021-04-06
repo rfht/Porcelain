@@ -5,7 +5,7 @@ use warnings;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(gem_host lines readconf readtext sep uri_class url2absolute);
+our @EXPORT = qw(append_file gem_host lines readconf readtext sep uri_class url2absolute);
 
 sub gem_host {
 	my $out = $_[0];
@@ -50,6 +50,14 @@ sub readtext { # read text file, line by line. param: filepath --> return: array
 	}
 	close $fh;
 	return @r_array;
+}
+
+sub append_file {	# append a line to a text file. params: filepath, textline --> return: 1 (success) or 0 (failure)
+	my ($filepath, $textline) = @_;
+	open my $fh, '>>', $filepath or return 0;
+	print $fh $textline . "\n";
+	close $fh;
+	return 1;
 }
 
 sub sep {	# gmi string containing whitespace --> ($first, $rest)

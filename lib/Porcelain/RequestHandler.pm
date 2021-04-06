@@ -23,7 +23,7 @@ my $redirect_count = 0;
 use constant MAX_REDIRECT => 5;	# TODO: allow custom value in config
 my $valcert;		# state of certificate validation. 3: verified; 2: TOFU; 1: new; 0: mismatch
 my $valdate;
-my $notAfter
+my $notAfter;
 
 # about pages
 my @bookmarks;
@@ -183,7 +183,8 @@ sub request {	# first line to process all requests for an address. params: addre
 			# (2, Date): TOFU ok, date is the ORIGINAL date that TOFU was stored (more distant is better)
 			$valdate = $details;
 		} elsif ($valcert == 1) {
-			# (1, fingerprint): unknown host, fingerprint for storing
+			# (1, fingerprint): unknown host, fingerprint and notAfter for storing
+			clean_exit $details;
 		} elsif ($valcert == 0) {
 			# (0, fingerprint): fingerprint mismatch, new fingerprint offered in case user wants to update it
 			c_err "fingerprint mismatch. [U]pdate fingerprint, [A]bort? ";

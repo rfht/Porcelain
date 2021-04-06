@@ -66,7 +66,7 @@ my %text_stores = (
 	"known_hosts"		=> \@known_hosts,
 	"subscriptions"		=> \@subscriptions,
 );
-$hosts_file = $porcelain_dir . "/known_hosts";	# obsolete; still used in Crypto.pm.
+$hosts_file = $porcelain_dir . "/known_hosts";
 
 $SIG{INT} = \&caught_sigint;
 
@@ -106,6 +106,9 @@ foreach (keys %text_stores) {
 	my $store_file = $porcelain_dir . "/" . $store_key;
 	if (-f $store_file) {
 		@{$text_stores{$store_key}} = readtext $store_file;
+	} else {
+		open my $fh, '>', $store_file;	# create empty file
+		close $fh;
 	}
 }
 
@@ -181,11 +184,10 @@ if ($opt_unveil) {
 }
 if ($opt_pledge) {
 	use OpenBSD::Pledge;
-	# TODO: tighten pledge later, e.g. remove wpath rpath after config is read
-	# TODO: remove cpath by creating the files with the installer or before unveil/pledge?
 	#	sslcat_porcelain:		rpath inet dns
 	#	system (for external programs)	exec proc
 	#	Curses				tty
+	#	Creating client certs		cpath wpath
 	# prot_exec is needed, as sometimes abort trap gets triggered when loading pages without it - TODO: investigate why
 	pledge(qw ( exec tty cpath rpath wpath inet dns proc prot_exec ) ) || die "Unable to pledge: $!";
 }
