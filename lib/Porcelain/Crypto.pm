@@ -6,7 +6,7 @@ use warnings;
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT = qw(fingerprint gen_client_cert gen_identity gen_privkey init_crypto
-		store_cert store_privkey validate_cert sslcat_porcelain
+		store_cert store_privkey validate_cert verify_cert sslcat_porcelain
 		$hosts_file $idents_dir
 );
 
@@ -117,6 +117,21 @@ sub validate_cert {	# params: certificate, domainname
 	} else {
 		return (-1, "unexpected error trying to find $domain + $algo in known_hosts", undef);
 	}
+}
+
+sub verify_cert {	# params: domain, fingerprint, method(m, p, t) --> return: 1 (success) or 0 (failure)
+			#	m: manual comparison
+			#	p: paste of fingerprint
+			#	t: third-party
+	my ($vdom, $vfp, $vnotAfter, $vmethod) = @_;
+	$vdom =~ s|/+$||;
+	my $algo = $fp_algo || DEFAULT_FP_ALGO;
+	foreach (grep(/^$vdom\s+/, @known_hosts)) {
+		my ($kh_dom, $kh_algo, $kh_fp, $kh_notAfter, $kh_date, $kh_oob) = split /\s+/, $_;
+		$_ = join " ", $vdom, $algo, $vfp, $vnotAfter, DateTime->now->ymd, $vmethod;
+		write_file $hosts_file, \@known_hosts or clean_die "Error updating $hosts_file";
+	}
+	return 1;
 }
 
 # see sslcat in /usr/local/libdata/perl5/site_perl/amd64-openbsd/Net/SSLeay.pm

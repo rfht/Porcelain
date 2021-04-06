@@ -63,7 +63,8 @@ sub append_file {	# append a line to a text file. params: filepath, textline -->
 sub write_file {	# write/replace a file. params: filepath, array to write linewise, bool raw (opt.) --> return: 1 (success) or 0 (failure)
 	my $filepath = $_[0];
 	my @w_array = @{$_[1]};
-	$_[2] ? my $raw = ':raw' : my $raw = '';
+	my $raw;
+	$_[2] ? $raw = ':raw' : $raw = '';
 	open my $fh, ">$raw", $filepath or return 0;
 	foreach my $line (@w_array) {
 		print $fh $line . "\n";

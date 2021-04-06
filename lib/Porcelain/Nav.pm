@@ -144,17 +144,19 @@ sub page_nav {
 				my $match_win_height = max(int($displayrows / 1.25), 12);
 				my $match_win = newwin($match_win_height, $match_win_width, int(($displayrows - $match_win_height) / 2), int(($COLS - $match_win_width) / 2)); 
 				box($match_win, 0, 0);
-				addstr($match_win, 1, 1, $host_cert->fingerprint_sha256());
-				addstr($match_win, 3, 1, randomart(lc($host_cert->fingerprint_sha256() =~ tr/://dr)));
+				addstr($match_win, 1, 1, fingerprint($host_cert));
+				addstr($match_win, 3, 1, randomart(fingerprint($host_cert)));
 				addstr($match_win, $match_win_height - 2, 1, "Compare with SHA-256 fingerprint obtained from a credible source. Does it match?");
 				refresh($match_win);
 				$r = getch;
-				unless (lc($r) eq 'y') {
-					return;
+				delwin($match_win);
+				if (lc($r) eq 'y') {
+					verify_cert $domain, fingerprint($host_cert), $notAfter, 'm';
+					return(check_add_prot($addr));
 				}
-				# TODO: store the $sha256 (from $host_cert) in known_hosts
-			} elsif ($r =~ tr/://dr =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
-				if ($r eq lc($host_cert->fingerprint_sha256() =~ tr/://dr)) {
+				$update_viewport = 1;
+			} elsif ($r =~ tr/://d =~ /^[0-9a-f]{64}$/) {	# SHA-256, can be 01:AB:... or 01ab...
+				if ($r = lc($r) eq fingerprint($host_cert)) {
 					clean_exit "SHA-256 match";
 				} else {
 					clean_exit "SHA-256 mismatch";
