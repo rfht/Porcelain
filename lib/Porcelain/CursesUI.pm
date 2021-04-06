@@ -12,6 +12,9 @@ our @EXPORT = qw(c_err c_fullscr c_pad_str c_prompt_ch c_prompt_str
 );
 
 use Curses;
+use DateTime;
+use DateTime::Duration;
+use DateTime::Format::Strptime;
 use Encode qw(encode);
 use List::Util qw(max);
 use Porcelain::Format;
@@ -113,18 +116,31 @@ sub c_statusline {	# Curses status line. Stays until refresh. Status text --> un
 }
 
 sub c_title_win {	# modify $title_win. in: domainname
-	my ($x509, $addr, $valcert, $valdate) = @_;
+	my ($x509, $addr, $valcert, $valdate, $notAfter) = @_;
 	my $sec_status = undef;
+	my $strp = DateTime::Format::Strptime->new(
+		pattern		=> '%F',	# %F: ISO style date %Y-%m-%d
+		time_zone	=> 'UTC',
+	);
+	my $days_since_valdate;
+	my $days_until_notAfter;
+	if (defined $valdate) {
+		$days_since_valdate = $strp->parse_datetime($valdate)->delta_days(DateTime->now)->in_units('days');
+	}
+	if (defined $notAfter) {
+		$days_until_notAfter = $strp->parse_datetime($notAfter)->delta_days(DateTime->now)->in_units('days');
+		$notAfter = substr $notAfter, 0, 10;	# shorten the string to the date, discarding the time
+	}
 	if (defined $x509) {
 		if ($valcert == 3) {
 			bkgd($title_win, COLOR_PAIR(4) | A_REVERSE);
-			$sec_status = "Server identity verified on $valdate";
+			$sec_status = "Server identity verified on $valdate (${days_since_valdate}d), expires on: $notAfter (${days_until_notAfter}d)";
 		} elsif ($valcert == 2) {
 			bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
-			$sec_status = "TOFU okay; known since: $valdate";
+			$sec_status = "TOFU ok; known since: $valdate (${days_since_valdate}d), expires on: $notAfter (${days_until_notAfter}d)";
 		} elsif ($valcert == 1) {
 			bkgd($title_win, COLOR_PAIR(1) | A_REVERSE);
-			$sec_status = "New/unknown server";
+			$sec_status = "New/unknown server, expires on: $notAfter (${days_until_notAfter}d)";
 		} elsif ($valcert == 0) {
 			bkgd($title_win, COLOR_PAIR(7) | A_REVERSE);
 			$sec_status = "SERVER CERT DOES NOT MATCH THE RECORDED CERT";

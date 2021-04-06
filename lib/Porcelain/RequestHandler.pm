@@ -191,7 +191,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			# (-1, string): unexpected error, see details in string
 			return "about:error";	# TODO: add details to the error
 		} else {
-			die "invalid response from sub validate_cert: $valcert, $details";	# should not be reached
+			clean_die "invalid response from sub validate_cert: $valcert, $details";	# should not be reached
 		}
 
 		# Process response header
@@ -292,7 +292,7 @@ sub request {	# first line to process all requests for an address. params: addre
 			return "about:error";
 		}
 	}
-	return page_nav $domain, $addr, $valcert, $valdate, $render_format, $host_cert, \@content;
+	return page_nav $domain, $addr, $valcert, $valdate, $notAfter, $render_format, $host_cert, \@content;
 }
 
 1;

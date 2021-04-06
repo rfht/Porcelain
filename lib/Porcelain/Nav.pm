@@ -56,7 +56,7 @@ sub check_add_prot {	# if address is without protocol, add "gemini://".
 }
 
 sub page_nav {
-	my ($domain, $addr, $valcert, $valdate, $renderformat, $host_cert, $content) = @_;
+	my ($domain, $addr, $valcert, $valdate, $notAfter, $renderformat, $host_cert, $content) = @_;
 	my @formatted;
 	undef @links;
 
@@ -85,7 +85,7 @@ sub page_nav {
 		my $displayrows = $LINES - 2;
 		my $viewto = min($viewfrom + $displayrows, $render_length - 1);
 		if ($update_viewport == 1) {
-			c_title_win $host_cert, $addr, $valcert, $valdate;
+			c_title_win $host_cert, $addr, $valcert, $valdate, $notAfter;
 			render $renderformat, $viewfrom, $viewto, \@formatted, \@links, $searchstr;
 			refresh;
 		}

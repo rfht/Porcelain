@@ -10,8 +10,8 @@ our @EXPORT = qw(fingerprint gen_client_cert gen_identity gen_privkey init_crypt
 		$hosts_file $idents_dir
 );
 
+use DateTime;
 use Net::SSLeay;
-use POSIX qw(strftime);
 use Porcelain::CursesUI;	# for c_warn
 use Porcelain::Porcelain;	# for append_file
 
@@ -104,13 +104,12 @@ sub validate_cert {	# params: certificate, domainname
 	if (scalar(@kh_match) > 1) {
 		return (-1, "more than 1 match in known_hosts for $domain + $algo", undef);
 	} elsif (scalar(@kh_match) == 0) {
-		# TODO: is ..._get_isotime in local time? or UTC?
 		my $new_kh_line = join " ", $domain, $fp_algo || DEFAULT_FP_ALGO, $fp,
 			Net::SSLeay::P_ASN1_TIME_get_isotime(Net::SSLeay::X509_get_notAfter($x509)),
-			strftime("%Y-%m-%d", localtime);
+			DateTime->now->ymd;	# DateTime->now defaults to UTC
 		append_file $hosts_file, $new_kh_line || clean_die "Error writing $domain entry to $hosts_file";
 		push @known_hosts, $new_kh_line;
-		return (1, $fp, undef);	# host not known
+		return (1, $fp, Net::SSLeay::P_ASN1_TIME_get_isotime(Net::SSLeay::X509_get_notAfter($x509)));	# host not known
 	} elsif (scalar(@kh_match) == 1) {
 		my ($kh_domain, $kh_algo, $kh_fp, $kh_notAfter, $kh_date, $kh_oob) = split /\s+/, $kh_match[0];
 		if ($fp eq $kh_fp) {		# TOFU match
