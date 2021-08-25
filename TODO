@@ -56,3 +56,4 @@ Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects
 Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects/Porcelain/script/../lib/Porcelain/Nav.pm line 79.
 
 # with links continued into another line, fix correct color display of the link
+# "gemini://frrobert.net" doesn't open, but "gemini://frrobert.net/" does: "Error completing the request"
