@@ -57,3 +57,4 @@ Use of uninitialized value $renderformat in string eq at /home/thfr/cvs/projects
 
 # with links continued into another line, fix correct color display of the link
 # "gemini://frrobert.net" doesn't open, but "gemini://frrobert.net/" does: "Error completing the request"
+# in console, the background of the title window misses background coloring of the leftmost char
