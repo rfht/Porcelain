@@ -9,4 +9,14 @@ Its goals:
 * text-based interface (at least at first)
 * minimal complexity of the codebase, maximal maintainability and readability to achieve the other goals
 
+
+Dependencies
+------------
+
+On OpenBSD, install dependencies with:
+
+```
+# pkg_add -U p5-DateTime p5-Curses p5-DateTime-Format-Strptime p5-Text-CharWidth p5-Any-URI-Escape p5-File-LibMagic
+```
+
 License: ISC
